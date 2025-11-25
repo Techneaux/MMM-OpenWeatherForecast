@@ -93,47 +93,22 @@
     display: block;
     width: 100%;
     border: solid 1px #222;
-    padding: 8px;
+    padding: 6px 8px;
     text-align: left;
     background-image: url("icons/alert-icon.svg");
-    background-size: 30px 26px;
+    background-size: 20px 18px;
     background-repeat: no-repeat;
-    background-position: 6px 10px;
+    background-position: 6px 8px;
   }
 
   .weather-alert .weather-alert-title {
-    font-size: 17px;
-    line-height: 1;
-    margin-bottom: 4px;
+    font-size: 15px;
+    line-height: 1.3;
     color: #dd1212;
     display: block;
     text-align: left;
-    padding-left: 36px;
+    padding-left: 30px;
     font-weight: 700;
-  }
-
-  .weather-alert .weather-alert-description {
-    font-size: 17px;
-    line-height: 1.2;
-    color: #fff;
-    text-align: left;
-    padding-left: 36px;
-
-    /* truncate to no more than three lines */
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .weather-alert .weather-alert-source {
-    display: block;
-    font-size: 11px;
-    line-height: 1;
-    text-transform: uppercase;
-    color: #999;
-    padding-left: 36px;
-    margin-top: 6px;
   }
 
   /* Forecast Header */

@@ -25,13 +25,13 @@
       <div class="summary-wrapper small">
         <div class="summary">{{ forecast.summary }}</div>
 
-        {% for alert in forecast.alerts %}
+        {% if forecast.alerts.length > 0 %}
           <div class="weather-alert">
-            <span class="weather-alert-title">{{ alert.event }}</span>
-            <span class="weather-alert-description">{{ alert.description }}</span>
-            <span class="weather-alert-source">{{ alert.sender_name }}</span>
+            {% for alert in forecast.alerts %}
+              <span class="weather-alert-title">{{ alert.event }}</span>
+            {% endfor %}
           </div>
-        {% endfor %}
+        {% endif %}
       </div>
     {% endif %}
 
