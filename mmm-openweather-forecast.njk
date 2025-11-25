@@ -30,15 +30,15 @@
             {# Compact mode: single container with all alert titles #}
             <div class="weather-alert weather-alert-compact">
               {% for alert in forecast.alerts %}
-                <span class="weather-alert-title">{{ alert.event }}</span>
+                <span class="weather-alert-title" style="font-size: {{ config.alertTextSize }}px;">{{ alert.event }}</span>
               {% endfor %}
             </div>
           {% else %}
             {# Detailed mode: separate container for each alert with full info #}
             {% for alert in forecast.alerts %}
               <div class="weather-alert">
-                <span class="weather-alert-title">{{ alert.event }}</span>
-                <span class="weather-alert-description">{{ alert.description }}</span>
+                <span class="weather-alert-title" style="font-size: {{ config.alertTextSize }}px;">{{ alert.event }}</span>
+                <span class="weather-alert-description" style="font-size: {{ config.alertTextSize }}px;">{{ alert.description }}</span>
                 <span class="weather-alert-source">{{ alert.sender_name }}</span>
               </div>
             {% endfor %}

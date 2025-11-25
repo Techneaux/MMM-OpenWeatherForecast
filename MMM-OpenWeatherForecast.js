@@ -72,6 +72,7 @@ Module.register("MMM-OpenWeatherForecast", {
     showExtraCurrentConditions: true,
     showAlerts: true,
     compactAlerts: true,
+    alertTextSize: 17,
     extraCurrentConditions: {
       highLowTemp: true,
       precipitation: true,
@@ -239,7 +240,8 @@ Module.register("MMM-OpenWeatherForecast", {
       "maxDailiesToShow",
       "mainIconSize",
       "forecastIconSize",
-      "updateFadeSpeed"
+      "updateFadeSpeed",
+      "alertTextSize"
     ]);
 
 

@@ -135,6 +135,10 @@ Find out your latitude and longitude here:
       <td>Whether to show the forecast summary. Weather alerts will also appear here.<br><br><strong>Type</strong> <code>Boolean</code><br>Defaults to <code>true</code></td>
     </tr>
     <tr>
+      <td><code>alertTextSize</code></td>
+      <td>The font size (in pixels) for weather alert text such as "Winter Weather Advisory".<br><br><strong>Type</strong> <code>Number</code><br>Defaults to <code>17</code></td>
+    </tr>
+    <tr>
       <td><code>showExtraCurrentConditions</code></td>
       <td>Whether to show additional current conditions such as high/low temperatures, precipitation and wind speed.<br><br><strong>Type</strong> <code>Boolean</code><br>Defaults to <code>true</code></td>
     </tr>
