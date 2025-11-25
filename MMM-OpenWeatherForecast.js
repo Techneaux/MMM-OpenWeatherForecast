@@ -70,6 +70,8 @@ Module.register("MMM-OpenWeatherForecast", {
 
     showCurrentConditions: true,
     showExtraCurrentConditions: true,
+    showAlerts: true,
+    compactAlerts: true,
     extraCurrentConditions: {
       highLowTemp: true,
       precipitation: true,
