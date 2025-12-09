@@ -457,8 +457,10 @@ Module.register("MMM-OpenWeatherForecast", {
 
   // Returns the number of hourly entries remaining until midnight tonight
   getHoursRemainingToday () {
-    const midnightTonight = moment(this.weatherData.current.dt * 1000).endOf("day")
-      .valueOf();
+    // Calculate midnight in the weather location's timezone using API offset
+    const offsetMs = (this.weatherData.timezone_offset || 0) * 1000;
+    const localTime = moment(this.weatherData.current.dt * 1000 + offsetMs);
+    const midnightTonight = localTime.endOf("day").valueOf() - offsetMs;
     let count = 0;
     for (let i = 0; i < this.weatherData.hourly.length; i++) {
       if (this.weatherData.hourly[i].dt * 1000 <= midnightTonight) {
@@ -494,20 +496,25 @@ Module.register("MMM-OpenWeatherForecast", {
     return `${Math.round(total * factor * 10) / 10} ${this.getUnit("accumulationRain")}`;
   },
 
-  // Returns max wind gust (or speed) expected for the remainder of today
+  // Returns max wind speed and max gust expected for the remainder of today
   calculateTodayMaxWind () {
     const factor = this.config.units !== "imperial" && this.config.displayKmhForWind
       ? 3.6
       : 1;
     const hours = this.getHoursRemainingToday();
-    let maxWind = 0;
+    let maxSpeed = 0;
+    let maxGust = 0;
     for (let i = 0; i < hours && i < this.weatherData.hourly.length; i++) {
-      const windValue = this.weatherData.hourly[i].wind_gust || this.weatherData.hourly[i].wind_speed || 0;
-      maxWind = Math.max(maxWind, windValue);
+      const hour = this.weatherData.hourly[i];
+      maxSpeed = Math.max(maxSpeed, hour.wind_speed || 0);
+      maxGust = Math.max(maxGust, hour.wind_gust || 0);
     }
+    const unit = this.getUnit("windSpeed");
     return {
-      windSpeed: `${Math.round(maxWind * factor)} ${this.getUnit("windSpeed")}`,
-      windGust: null
+      windSpeed: `${Math.round(maxSpeed * factor)} ${unit}`,
+      windGust: maxGust > 0
+        ? `${Math.round(maxGust * factor)} ${unit}`
+        : null
     };
   },
 
@@ -521,9 +528,7 @@ Module.register("MMM-OpenWeatherForecast", {
     return Math.round(maxUV);
   },
 
-  /*
-   *Returns a formatted data object for High / Low temperature range
-   */
+  // Returns a formatted data object for High / Low temperature range
   formatHiLowTemperature (highTemperature, lowTemperature) {
     return {
       high: `${(this.config.concise
@@ -535,9 +540,7 @@ Module.register("MMM-OpenWeatherForecast", {
     };
   },
 
-  /*
-   *Returns a formatted data object for precipitation
-   */
+  // Returns a formatted data object for precipitation
   formatPrecipitation (percentChance, rainAccumulation, snowAccumulation) {
     let accumulation = null;
 
@@ -565,9 +568,7 @@ Module.register("MMM-OpenWeatherForecast", {
     };
   },
 
-  /*
-   *Returns a formatted data object for wind conditions
-   */
+  // Returns a formatted data object for wind conditions
   formatWind (speed, bearing, gust) {
     let conversionFactor = 1;
     if (this.config.units !== "imperial" && this.config.displayKmhForWind) {

@@ -90,12 +90,7 @@
         {% if config.extraCurrentConditions.wind %}
           <span class="wind-container">
             <img class="inline-icon wind-icon" src="{{ inlineIcons.wind }}" />
-            <span class="wind-speed">{{ forecast.currently.wind.windSpeed }}</span>
-            
-            {% if forecast.currently.wind.windGust %}
-              <span class="wind-gusts">{{ forecast.currently.wind.windGust }}</span>
-            {% endif %}
-
+            <span class="wind-speed">{{ forecast.currently.wind.windSpeed }}{% if forecast.currently.wind.windGust %}/{{ forecast.currently.wind.windGust }}{% endif %}</span>
           </span>
         {% endif %}
 
