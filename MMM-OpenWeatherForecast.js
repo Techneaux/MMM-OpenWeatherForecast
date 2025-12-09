@@ -349,19 +349,7 @@ Module.register("MMM-OpenWeatherForecast", {
       alerts = this.weatherData.alerts;
     }
 
-    /*
-     * current accumulation of precipitation
-     * OpenWeather always returns precipitation in mm, convert to inches for imperial
-     */
-    const precipConversionFactor = this.config.units === "imperial"
-      ? 1 / 25.4
-      : 1;
-    let accumulation = `${0} ${this.getUnit("accumulationRain")}`;
-    if (this.weatherData.current.rain) {
-      accumulation = `${Math.round(this.weatherData.current.rain["1h"] * precipConversionFactor * 10) / 10} ${this.getUnit("accumulationRain")}`;
-    } else if (this.weatherData.current.snow) {
-      accumulation = `${Math.round(this.weatherData.current.snow["1h"] * precipConversionFactor * 10) / 10} ${this.getUnit("accumulationSnow")}`;
-    }
+    const accumulation = this.calculate24hPrecipitation();
 
     return {
       currently: {
@@ -374,13 +362,13 @@ Module.register("MMM-OpenWeatherForecast", {
         iconPath: this.generateIconSrc(this.iconMap[this.weatherData.current.weather[0].icon]),
         tempRange: this.formatHiLowTemperature(this.weatherData.daily[0].temp.max, this.weatherData.daily[0].temp.min),
         precipitation: accumulation,
-        wind: this.formatWind(this.weatherData.current.wind_speed, this.weatherData.current.wind_deg, this.weatherData.current.wind_gust),
+        wind: this.calculate24hMaxWind(),
         sunrise: moment(this.weatherData.current.sunrise * 1000).format(this.config.label_sunriseTimeFormat),
         sunset: moment(this.weatherData.current.sunset * 1000).format(this.config.label_sunriseTimeFormat),
         pressure: `${Math.round(this.weatherData.current.pressure / 10)} kPa`,
         humidity: `${Math.round(this.weatherData.current.humidity)}%`,
         dewPoint: `${Math.round(this.weatherData.current.dew_point)}°`,
-        uvIndex: Math.round(this.weatherData.current.uvi),
+        uvIndex: this.calculate24hMaxUV(),
         visibility: `${Math.round(this.weatherData.current.visibility / 1000)} km`
       },
       summary,
@@ -468,6 +456,65 @@ Module.register("MMM-OpenWeatherForecast", {
     }
 
     return fItem;
+  },
+
+  /*
+   * Returns total precipitation expected in the next 24 hours
+   * OpenWeather always returns precipitation in mm, convert to inches for imperial
+   */
+  calculate24hPrecipitation () {
+    const precipConversionFactor = this.config.units === "imperial"
+      ? 1 / 25.4
+      : 1;
+    let total24h = 0;
+    for (let i = 0; i < 24 && i < this.weatherData.hourly.length; i++) {
+      const hour = this.weatherData.hourly[i];
+      if (hour.rain && hour.rain["1h"]) {
+        total24h += hour.rain["1h"];
+      }
+      if (hour.snow && hour.snow["1h"]) {
+        total24h += hour.snow["1h"];
+      }
+    }
+    const convertedTotal = Math.round(total24h * precipConversionFactor * 10) / 10;
+    return `${convertedTotal} ${this.getUnit("accumulationRain")}`;
+  },
+
+  /*
+   * Returns max wind gust (or speed) expected in the next 24 hours
+   */
+  calculate24hMaxWind () {
+    let conversionFactor = 1;
+    if (this.config.units !== "imperial" && this.config.displayKmhForWind) {
+      conversionFactor = 3.6;
+    }
+
+    let maxWind = 0;
+    for (let i = 0; i < 24 && i < this.weatherData.hourly.length; i++) {
+      const hour = this.weatherData.hourly[i];
+      const windValue = hour.wind_gust || hour.wind_speed || 0;
+      if (windValue > maxWind) {
+        maxWind = windValue;
+      }
+    }
+
+    return {
+      windSpeed: `${Math.round(maxWind * conversionFactor)} ${this.getUnit("windSpeed")}`
+    };
+  },
+
+  /*
+   * Returns max UV index expected in the next 24 hours
+   */
+  calculate24hMaxUV () {
+    let maxUV = 0;
+    for (let i = 0; i < 24 && i < this.weatherData.hourly.length; i++) {
+      const hour = this.weatherData.hourly[i];
+      if (hour.uvi > maxUV) {
+        maxUV = hour.uvi;
+      }
+    }
+    return Math.round(maxUV);
   },
 
   /*
