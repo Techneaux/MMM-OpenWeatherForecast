@@ -349,12 +349,18 @@ Module.register("MMM-OpenWeatherForecast", {
       alerts = this.weatherData.alerts;
     }
 
-    // current accumulation of precipitation
+    /*
+     * current accumulation of precipitation
+     * OpenWeather always returns precipitation in mm, convert to inches for imperial
+     */
+    const precipConversionFactor = this.config.units === "imperial"
+      ? 1 / 25.4
+      : 1;
     let accumulation = `${0} ${this.getUnit("accumulationRain")}`;
     if (this.weatherData.current.rain) {
-      accumulation = `${Math.round(this.weatherData.current.rain["1h"] * 10) / 10} ${this.getUnit("accumulationRain")}`;
+      accumulation = `${Math.round(this.weatherData.current.rain["1h"] * precipConversionFactor * 10) / 10} ${this.getUnit("accumulationRain")}`;
     } else if (this.weatherData.current.snow) {
-      accumulation = `${Math.round(this.weatherData.current.snow["1h"] * 10) / 10} ${this.getUnit("accumulationSnow")}`;
+      accumulation = `${Math.round(this.weatherData.current.snow["1h"] * precipConversionFactor * 10) / 10} ${this.getUnit("accumulationSnow")}`;
     }
 
     return {
@@ -484,12 +490,19 @@ Module.register("MMM-OpenWeatherForecast", {
   formatPrecipitation (percentChance, rainAccumulation, snowAccumulation) {
     let accumulation = null;
 
-    // accumulation
+    /*
+     * accumulation
+     * OpenWeather always returns precipitation in mm, convert to inches for imperial
+     */
     if (!this.config.concise && (rainAccumulation || snowAccumulation)) {
+      const conversionFactor = this.config.units === "imperial"
+        ? 1 / 25.4
+        : 1;
+
       if (rainAccumulation) { // rain
-        accumulation = `${Math.round(rainAccumulation * 10) / 10} ${this.getUnit("accumulationRain")}`;
+        accumulation = `${Math.round(rainAccumulation * conversionFactor * 10) / 10} ${this.getUnit("accumulationRain")}`;
       } else if (snowAccumulation) { // snow
-        accumulation = `${Math.round(snowAccumulation)} ${this.getUnit("accumulationSnow")}`;
+        accumulation = `${Math.round(snowAccumulation * conversionFactor * 10) / 10} ${this.getUnit("accumulationSnow")}`;
       }
     }
 
@@ -553,8 +566,8 @@ Module.register("MMM-OpenWeatherForecast", {
       imperial: "in"
     },
     accumulationSnow: {
-      standard: "cm",
-      metric: "cm",
+      standard: "mm",
+      metric: "mm",
       imperial: "in"
     },
     windSpeed: {
