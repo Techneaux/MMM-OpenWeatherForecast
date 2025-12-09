@@ -509,12 +509,12 @@ Module.register("MMM-OpenWeatherForecast", {
       maxSpeed = Math.max(maxSpeed, hour.wind_speed || 0);
       maxGust = Math.max(maxGust, hour.wind_gust || 0);
     }
-    const unit = this.getUnit("windSpeed");
     return {
-      windSpeed: `${Math.round(maxSpeed * factor)} ${unit}`,
+      windSpeed: `${Math.round(maxSpeed * factor)}`,
       windGust: maxGust > 0
-        ? `${Math.round(maxGust * factor)} ${unit}`
-        : null
+        ? `${Math.round(maxGust * factor)}`
+        : null,
+      windUnit: this.getUnit("windSpeed")
     };
   },
 
