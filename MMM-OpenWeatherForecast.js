@@ -128,7 +128,6 @@ Module.register("MMM-OpenWeatherForecast", {
     label_ordinals: ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
   },
 
-
   validUnits: ["standard", "metric", "imperial"],
   validLayouts: ["tiled", "table"],
 
@@ -244,7 +243,6 @@ Module.register("MMM-OpenWeatherForecast", {
       "alertTextSize"
     ]);
 
-
     // force icon set to mono version when config.colored = false
     if (this.config.colored === false) {
       this.config.iconset = this.config.iconset.replace("c", "m");
@@ -349,7 +347,7 @@ Module.register("MMM-OpenWeatherForecast", {
       alerts = this.weatherData.alerts;
     }
 
-    const accumulation = this.calculate24hPrecipitation();
+    const accumulation = this.calculateTodayPrecipitation();
 
     return {
       currently: {
@@ -362,13 +360,13 @@ Module.register("MMM-OpenWeatherForecast", {
         iconPath: this.generateIconSrc(this.iconMap[this.weatherData.current.weather[0].icon]),
         tempRange: this.formatHiLowTemperature(this.weatherData.daily[0].temp.max, this.weatherData.daily[0].temp.min),
         precipitation: accumulation,
-        wind: this.calculate24hMaxWind(),
+        wind: this.calculateTodayMaxWind(),
         sunrise: moment(this.weatherData.current.sunrise * 1000).format(this.config.label_sunriseTimeFormat),
         sunset: moment(this.weatherData.current.sunset * 1000).format(this.config.label_sunriseTimeFormat),
         pressure: `${Math.round(this.weatherData.current.pressure / 10)} kPa`,
         humidity: `${Math.round(this.weatherData.current.humidity)}%`,
         dewPoint: `${Math.round(this.weatherData.current.dew_point)}°`,
-        uvIndex: this.calculate24hMaxUV(),
+        uvIndex: this.calculateTodayMaxUV(),
         visibility: `${Math.round(this.weatherData.current.visibility / 1000)} km`
       },
       summary,
@@ -377,7 +375,6 @@ Module.register("MMM-OpenWeatherForecast", {
       alerts
     };
   },
-
 
   /*
    * Hourly and Daily forecast items are very similar.  So one routine builds the data
@@ -458,61 +455,68 @@ Module.register("MMM-OpenWeatherForecast", {
     return fItem;
   },
 
-  /*
-   * Returns total precipitation expected in the next 24 hours
-   * OpenWeather always returns precipitation in mm, convert to inches for imperial
-   */
-  calculate24hPrecipitation () {
-    const precipConversionFactor = this.config.units === "imperial"
-      ? 1 / 25.4
-      : 1;
-    let total24h = 0;
-    for (let i = 0; i < 24 && i < this.weatherData.hourly.length; i++) {
-      const hour = this.weatherData.hourly[i];
-      if (hour.rain && hour.rain["1h"]) {
-        total24h += hour.rain["1h"];
-      }
-      if (hour.snow && hour.snow["1h"]) {
-        total24h += hour.snow["1h"];
+  // Returns the number of hourly entries remaining until midnight tonight
+  getHoursRemainingToday () {
+    const midnightTonight = moment(this.weatherData.current.dt * 1000).endOf("day")
+      .valueOf();
+    let count = 0;
+    for (let i = 0; i < this.weatherData.hourly.length; i++) {
+      if (this.weatherData.hourly[i].dt * 1000 <= midnightTonight) {
+        count++;
+      } else {
+        break;
       }
     }
-    const convertedTotal = Math.round(total24h * precipConversionFactor * 10) / 10;
-    return `${convertedTotal} ${this.getUnit("accumulationRain")}`;
+    return count;
   },
 
-  /*
-   * Returns max wind gust (or speed) expected in the next 24 hours
-   */
-  calculate24hMaxWind () {
-    let conversionFactor = 1;
-    if (this.config.units !== "imperial" && this.config.displayKmhForWind) {
-      conversionFactor = 3.6;
-    }
-
-    let maxWind = 0;
-    for (let i = 0; i < 24 && i < this.weatherData.hourly.length; i++) {
+  // Returns total precipitation expected for the remainder of today
+  calculateTodayPrecipitation () {
+    const factor = this.config.units === "imperial"
+      ? 1 / 25.4
+      : 1;
+    const hours = this.getHoursRemainingToday();
+    let total = 0;
+    for (let i = 0; i < hours && i < this.weatherData.hourly.length; i++) {
       const hour = this.weatherData.hourly[i];
-      const windValue = hour.wind_gust || hour.wind_speed || 0;
-      if (windValue > maxWind) {
-        maxWind = windValue;
-      }
+      const rain = hour.rain
+        ? Object.hasOwn(hour.rain, "1h")
+          ? hour.rain["1h"]
+          : hour.rain
+        : 0;
+      const snow = hour.snow
+        ? Object.hasOwn(hour.snow, "1h")
+          ? hour.snow["1h"]
+          : hour.snow
+        : 0;
+      total += rain + snow;
     }
+    return `${Math.round(total * factor * 10) / 10} ${this.getUnit("accumulationRain")}`;
+  },
 
+  // Returns max wind gust (or speed) expected for the remainder of today
+  calculateTodayMaxWind () {
+    const factor = this.config.units !== "imperial" && this.config.displayKmhForWind
+      ? 3.6
+      : 1;
+    const hours = this.getHoursRemainingToday();
+    let maxWind = 0;
+    for (let i = 0; i < hours && i < this.weatherData.hourly.length; i++) {
+      const windValue = this.weatherData.hourly[i].wind_gust || this.weatherData.hourly[i].wind_speed || 0;
+      maxWind = Math.max(maxWind, windValue);
+    }
     return {
-      windSpeed: `${Math.round(maxWind * conversionFactor)} ${this.getUnit("windSpeed")}`
+      windSpeed: `${Math.round(maxWind * factor)} ${this.getUnit("windSpeed")}`,
+      windGust: null
     };
   },
 
-  /*
-   * Returns max UV index expected in the next 24 hours
-   */
-  calculate24hMaxUV () {
+  // Returns max UV index expected for the remainder of today
+  calculateTodayMaxUV () {
+    const hours = this.getHoursRemainingToday();
     let maxUV = 0;
-    for (let i = 0; i < 24 && i < this.weatherData.hourly.length; i++) {
-      const hour = this.weatherData.hourly[i];
-      if (hour.uvi > maxUV) {
-        maxUV = hour.uvi;
-      }
+    for (let i = 0; i < hours && i < this.weatherData.hourly.length; i++) {
+      maxUV = Math.max(maxUV, this.weatherData.hourly[i].uvi ?? 0);
     }
     return Math.round(maxUV);
   },
@@ -750,7 +754,6 @@ Module.register("MMM-OpenWeatherForecast", {
     if (!isMainIcon) {
       iconId = `skycon_${this.iconCache.length}`;
     }
-
 
     // add id and icon name to cache
     this.iconCache.push({
