@@ -455,77 +455,36 @@ Module.register("MMM-OpenWeatherForecast", {
     return fItem;
   },
 
-  // Returns the number of hourly entries remaining until midnight tonight
-  getHoursRemainingToday () {
-    // Calculate midnight in the weather location's timezone using API offset
-    const offsetMs = (this.weatherData.timezone_offset || 0) * 1000;
-    const localTime = moment(this.weatherData.current.dt * 1000 + offsetMs);
-    const midnightTonight = localTime.endOf("day").valueOf() - offsetMs;
-    let count = 0;
-    for (let i = 0; i < this.weatherData.hourly.length; i++) {
-      if (this.weatherData.hourly[i].dt * 1000 <= midnightTonight) {
-        count++;
-      } else {
-        break;
-      }
-    }
-    return count;
-  },
-
-  // Returns total precipitation expected for the remainder of today
+  // Returns total precipitation expected for today
   calculateTodayPrecipitation () {
     const factor = this.config.units === "imperial"
       ? 1 / 25.4
       : 1;
-    const hours = this.getHoursRemainingToday();
-    let total = 0;
-    for (let i = 0; i < hours && i < this.weatherData.hourly.length; i++) {
-      const hour = this.weatherData.hourly[i];
-      const rain = hour.rain
-        ? Object.hasOwn(hour.rain, "1h")
-          ? hour.rain["1h"]
-          : hour.rain
-        : 0;
-      const snow = hour.snow
-        ? Object.hasOwn(hour.snow, "1h")
-          ? hour.snow["1h"]
-          : hour.snow
-        : 0;
-      total += rain + snow;
-    }
+    const daily = this.weatherData.daily[0];
+    const total = (daily.rain || 0) + (daily.snow || 0);
     return `${Math.round(total * factor * 10) / 10} ${this.getUnit("accumulationRain")}`;
   },
 
-  // Returns max wind speed and max gust expected for the remainder of today
+  // Returns max wind speed and max gust expected for today
   calculateTodayMaxWind () {
     const factor = this.config.units !== "imperial" && this.config.displayKmhForWind
       ? 3.6
       : 1;
-    const hours = this.getHoursRemainingToday();
-    let maxSpeed = 0;
-    let maxGust = 0;
-    for (let i = 0; i < hours && i < this.weatherData.hourly.length; i++) {
-      const hour = this.weatherData.hourly[i];
-      maxSpeed = Math.max(maxSpeed, hour.wind_speed || 0);
-      maxGust = Math.max(maxGust, hour.wind_gust || 0);
-    }
+    const daily = this.weatherData.daily[0];
+    const speed = daily.wind_speed || 0;
+    const gust = daily.wind_gust || 0;
     return {
-      windSpeed: `${Math.round(maxSpeed * factor)}`,
-      windGust: maxGust > 0
-        ? `${Math.round(maxGust * factor)}`
+      windSpeed: `${Math.round(speed * factor)}`,
+      windGust: gust > 0
+        ? `${Math.round(gust * factor)}`
         : null,
       windUnit: this.getUnit("windSpeed")
     };
   },
 
-  // Returns max UV index expected for the remainder of today
+  // Returns max UV index expected for today
   calculateTodayMaxUV () {
-    const hours = this.getHoursRemainingToday();
-    let maxUV = 0;
-    for (let i = 0; i < hours && i < this.weatherData.hourly.length; i++) {
-      maxUV = Math.max(maxUV, this.weatherData.hourly[i].uvi ?? 0);
-    }
-    return Math.round(maxUV);
+    return Math.round(this.weatherData.daily[0].uvi ?? 0);
   },
 
   // Returns a formatted data object for High / Low temperature range
