@@ -46,9 +46,9 @@ MMM-OpenWeatherForecast is a MagicMirror² weather module that displays current,
 3. node_helper transforms data to OpenWeather format
 4. node_helper returns data via `OPENWEATHER_FORECAST_DATA` notification
 
-**Both providers:**
-4. Frontend's `processWeatherData()` formats raw API data for template
-5. Template renders via `getTemplateData()` which provides formatted forecast and icon paths
+**Both providers (continued):**
+1. Frontend's `processWeatherData()` formats raw API data for template
+2. Template renders via `getTemplateData()` which provides formatted forecast and icon paths
 
 ### Key Configuration
 

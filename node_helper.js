@@ -49,7 +49,8 @@ module.exports = NodeHelper.create({
     if (targetUnits === "imperial") {
       return kmh * 0.621371; // km/h to mph
     }
-    return kmh * 0.277778; // km/h to m/s
+    // metric and standard both use m/s
+    return kmh * 0.277778;
   },
 
   async socketNotificationReceived (notification, payload) {
@@ -310,7 +311,7 @@ module.exports = NodeHelper.create({
     };
 
     // Build daily forecast
-    const daily = this.buildDailyForecast(props, sunData, units);
+    const daily = this.buildDailyForecast(props, sunData, uvData, units);
 
     // Build hourly forecast
     const hourly = this.buildHourlyForecast(props, sunData, units);
@@ -318,9 +319,16 @@ module.exports = NodeHelper.create({
     // Build alerts
     const alerts = this.buildAlerts(alertsData);
 
+    // Extract coordinates with warning if missing
+    const lat = gridData.geometry?.coordinates?.[1];
+    const lon = gridData.geometry?.coordinates?.[0];
+    if (typeof lat !== "number" || typeof lon !== "number") {
+      Log.warn("[MMM-OpenWeatherForecast] Missing geometry coordinates in weather.gov response");
+    }
+
     return {
-      lat: gridData.geometry?.coordinates?.[1] || 0,
-      lon: gridData.geometry?.coordinates?.[0] || 0,
+      lat: lat || 0,
+      lon: lon || 0,
       timezone: props.timeZone || "America/Chicago",
       timezone_offset: 0,
       current,
@@ -454,7 +462,8 @@ module.exports = NodeHelper.create({
   },
 
   // Build daily forecast from weather.gov data
-  buildDailyForecast (props, sunData, units) {
+  // eslint-disable-next-line max-params
+  buildDailyForecast (props, sunData, uvData, units) {
     const daily = [];
     const now = new Date();
 
@@ -465,6 +474,11 @@ module.exports = NodeHelper.create({
     const baseSunset = sunData
       ? Math.floor(new Date(sunData.sunset).getTime() / 1000)
       : null;
+
+    // Calculate max UV for today from EPA data (only available for current day)
+    const todayMaxUv = uvData && uvData.length > 0
+      ? Math.max(...uvData.map((item) => item.UV_VALUE || 0))
+      : 0;
 
     // Get values for a specific day from a time series
     const getValuesForDay = (series, dayOffset) => {
@@ -487,28 +501,29 @@ module.exports = NodeHelper.create({
       date.setDate(date.getDate() + i);
       date.setHours(12, 0, 0, 0); // Noon for daily icon
 
-      const maxTemps = getValuesForDay(props.maxTemperature, i);
-      const minTemps = getValuesForDay(props.minTemperature, i);
-      const windSpeeds = getValuesForDay(props.windSpeed, i);
-      const windGusts = getValuesForDay(props.windGust, i);
-      const pops = getValuesForDay(props.probabilityOfPrecipitation, i);
+      // Filter nulls first, then check length to avoid Math.max/min on empty arrays
+      const validMaxTemps = getValuesForDay(props.maxTemperature, i).filter((v) => v !== null);
+      const validMinTemps = getValuesForDay(props.minTemperature, i).filter((v) => v !== null);
+      const validWindSpeeds = getValuesForDay(props.windSpeed, i).filter((v) => v !== null);
+      const validWindGusts = getValuesForDay(props.windGust, i).filter((v) => v !== null);
+      const validPops = getValuesForDay(props.probabilityOfPrecipitation, i).filter((v) => v !== null);
       const rain = getValuesForDay(props.quantitativePrecipitation, i);
       const snow = getValuesForDay(props.snowfallAmount, i);
 
-      const maxTemp = maxTemps.length > 0
-        ? Math.max(...maxTemps.filter((v) => v !== null))
+      const maxTemp = validMaxTemps.length > 0
+        ? Math.max(...validMaxTemps)
         : null;
-      const minTemp = minTemps.length > 0
-        ? Math.min(...minTemps.filter((v) => v !== null))
+      const minTemp = validMinTemps.length > 0
+        ? Math.min(...validMinTemps)
         : null;
-      const maxWind = windSpeeds.length > 0
-        ? Math.max(...windSpeeds.filter((v) => v !== null))
+      const maxWind = validWindSpeeds.length > 0
+        ? Math.max(...validWindSpeeds)
         : null;
-      const maxGust = windGusts.length > 0
-        ? Math.max(...windGusts.filter((v) => v !== null))
+      const maxGust = validWindGusts.length > 0
+        ? Math.max(...validWindGusts)
         : null;
-      const maxPop = pops.length > 0
-        ? Math.max(...pops.filter((v) => v !== null))
+      const maxPop = validPops.length > 0
+        ? Math.max(...validPops)
         : 0;
       const totalRain = rain.length > 0
         ? rain.reduce((a, b) => (a || 0) + (b || 0), 0)
@@ -555,7 +570,9 @@ module.exports = NodeHelper.create({
         rain: totalRain,
         snow: totalSnow,
         weather: [this.mapWeatherCondition(condition, timestamp, adjustedSunrise, adjustedSunset)],
-        uvi: 0
+        uvi: i === 0
+          ? todayMaxUv
+          : 0 // EPA data only available for current day
       });
     }
 
