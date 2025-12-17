@@ -90,7 +90,7 @@
         {% if config.extraCurrentConditions.wind %}
           <span class="wind-container">
             <img class="inline-icon wind-icon" src="{{ inlineIcons.wind }}" />
-            <span class="wind-speed">{{ forecast.currently.wind.windSpeed }}{% if forecast.currently.wind.windGust %} ({{ forecast.currently.wind.windGust }}){% endif %} {{ forecast.currently.wind.windUnit }}</span>
+            <span class="wind-speed">{{ forecast.currently.wind.windSpeed }}{% if forecast.currently.wind.windGust %} (G{{ forecast.currently.wind.windGust }}){% endif %} {{ forecast.currently.wind.windUnit }}</span>
           </span>
         {% endif %}
 
@@ -237,11 +237,7 @@
                   <img class="inline-icon wind-icon" src="{{ inlineIcons.wind }}" />
                 {% endif %}
 
-                <span class="wind-speed">{{ h.wind.windSpeed }}</span>
-                
-                {% if h.wind.windGust %}
-                  <span class="wind-gusts">{{ h.wind.windGust }}</span>
-                {% endif %}
+                <span class="wind-speed">{{ h.wind.windSpeed }}{% if h.wind.windGust %} {{ h.wind.windGust }}{% endif %} {{ h.wind.windUnit }}{% if h.wind.windDirection %} {{ h.wind.windDirection }}{% endif %}</span>
 
               </span>
 
@@ -445,11 +441,7 @@
                   <img class="inline-icon wind-icon" src="{{ inlineIcons.wind }}" />
                 {% endif %}
 
-                <span class="wind-speed">{{ d.wind.windSpeed }}</span>
-                
-                {% if d.wind.windGust %}
-                  <span class="wind-gusts">{{ d.wind.windGust }}</span>
-                {% endif %}
+                <span class="wind-speed">{{ d.wind.windSpeed }}{% if d.wind.windGust %} {{ d.wind.windGust }}{% endif %} {{ d.wind.windUnit }}{% if d.wind.windDirection %} {{ d.wind.windDirection }}{% endif %}</span>
 
               </span>
 

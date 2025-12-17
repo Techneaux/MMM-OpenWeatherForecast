@@ -537,14 +537,16 @@ Module.register("MMM-OpenWeatherForecast", {
     // wind gust
     let windGust = null;
     if (!this.config.concise && gust) {
-      windGust = ` (${this.config.label_maximum} ${Math.round(gust * conversionFactor)} ${this.getUnit("windSpeed")})`;
+      windGust = `(G${Math.round(gust * conversionFactor)})`;
     }
 
     return {
-      windSpeed: `${Math.round(speed * conversionFactor)} ${this.getUnit("windSpeed")}${this.config.concise
-        ? ""
-        : ` ${this.getOrdinal(bearing)}`}`,
-      windGust
+      windSpeed: `${Math.round(speed * conversionFactor)}`,
+      windGust,
+      windUnit: this.getUnit("windSpeed"),
+      windDirection: this.config.concise
+        ? null
+        : this.getOrdinal(bearing)
     };
   },
 
