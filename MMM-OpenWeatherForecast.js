@@ -51,6 +51,8 @@ Module.register("MMM-OpenWeatherForecast", {
     apikey: "",
     latitude: "",
     longitude: "",
+    weatherProvider: "openweather", // "openweather" or "free" (weather.gov + sunrise-sunset.org + EPA)
+    zipcode: "", // Required for UV index when using "free" provider
     updateInterval: 10, // minutes
     requestDelay: 0,
     language: config.language,
@@ -269,7 +271,9 @@ Module.register("MMM-OpenWeatherForecast", {
       units: this.config.units,
       language: this.config.language,
       instanceId: this.identifier,
-      requestDelay: this.config.requestDelay
+      requestDelay: this.config.requestDelay,
+      weatherProvider: this.config.weatherProvider,
+      zipcode: this.config.zipcode
     });
   },
 

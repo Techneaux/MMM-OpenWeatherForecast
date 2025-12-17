@@ -75,6 +75,14 @@ Find out your latitude and longitude here:
       <td>An alternative API URL you want to use. I.e. <code>https://api.openweathermap.org/data/3.0/onecall?</code> for the new One Call 3.0 API.<br><br><strong>Type</strong> <code>String</code><br>Defaults to <code>https://api.openweathermap.org/data/3.0/onecall?</code></td>
     </tr>
     <tr>
+      <td><code>weatherProvider</code></td>
+      <td>Weather data source. <code>"openweather"</code> uses OpenWeather API (requires API key). <code>"free"</code> uses weather.gov + sunrise-sunset.org + EPA (US only, no API key required).<br><br><strong>Type</strong> <code>String</code><br>Defaults to <code>"openweather"</code></td>
+    </tr>
+    <tr>
+      <td><code>zipcode</code></td>
+      <td>ZIP code for UV index data when using <code>"free"</code> provider. Required for UV index display with free provider.<br><br><strong>Type</strong> <code>String</code><br>Defaults to <code>""</code></td>
+    </tr>
+    <tr>
       <td><code>updateInterval</code></td>
       <td>How frequently, in minutes, to poll for data.<br><br><strong>Type</strong> <code>Number</code><br>Defaults to <code>10</code></td>
     </tr>

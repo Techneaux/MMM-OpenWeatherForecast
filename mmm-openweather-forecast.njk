@@ -507,5 +507,11 @@
 
   {% endif %}
 
-  <div class="attribution small dimmed">Powered by OpenWeather</div>
+  <div class="attribution small dimmed">
+    {% if config.weatherProvider == "free" %}
+      Powered by weather.gov
+    {% else %}
+      Powered by OpenWeather
+    {% endif %}
+  </div>
 </div>
