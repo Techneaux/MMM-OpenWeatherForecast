@@ -69,7 +69,9 @@ module.exports = NodeHelper.create({
       return JSON.parse(data);
     } catch (error) {
       // File doesn't exist or is corrupt - return empty cache
-      if (error.code !== "ENOENT") {
+      const isFileMissing = error.code === "ENOENT";
+      const isJsonParseError = error instanceof SyntaxError;
+      if (!isFileMissing && !isJsonParseError) {
         Log.warn(`[MMM-OpenWeatherForecast] Error reading cache: ${error.message}`);
       }
     }
@@ -101,7 +103,7 @@ module.exports = NodeHelper.create({
     const now = new Date();
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const cutoffDate = sevenDaysAgo.toLocaleDateString("en-CA"); // YYYY-MM-DD
+    const cutoffDate = moment(sevenDaysAgo).format("YYYY-MM-DD");
 
     const prunedDays = {};
     for (const [dateKey, values] of Object.entries(days)) {
@@ -127,8 +129,8 @@ module.exports = NodeHelper.create({
     cache.location = locationKey;
 
     const mergedDaily = daily.map((day) => {
-      // Get date key in local timezone
-      const dateKey = new Date(day.dt * 1000).toLocaleDateString("en-CA");
+      // Get date key in local timezone (YYYY-MM-DD format)
+      const dateKey = moment(day.dt * 1000).format("YYYY-MM-DD");
       const cached = cache.days[dateKey] || {};
 
       // Merge values: keep best of cached vs new
@@ -177,23 +179,23 @@ module.exports = NodeHelper.create({
     return [mergedDaily, cache];
   },
 
-  // Helper: merge by keeping max value
+  // Helper: merge by keeping max value (handles null, undefined, NaN)
   mergeMax (cached, current) {
-    if (cached === null || typeof cached === "undefined") {
+    if (cached === null || typeof cached === "undefined" || Number.isNaN(cached)) {
       return current;
     }
-    if (current === null || typeof current === "undefined") {
+    if (current === null || typeof current === "undefined" || Number.isNaN(current)) {
       return cached;
     }
     return Math.max(cached, current);
   },
 
-  // Helper: merge by keeping min value
+  // Helper: merge by keeping min value (handles null, undefined, NaN)
   mergeMin (cached, current) {
-    if (cached === null || typeof cached === "undefined") {
+    if (cached === null || typeof cached === "undefined" || Number.isNaN(cached)) {
       return current;
     }
-    if (current === null || typeof current === "undefined") {
+    if (current === null || typeof current === "undefined" || Number.isNaN(current)) {
       return cached;
     }
     return Math.min(cached, current);
@@ -640,12 +642,12 @@ module.exports = NodeHelper.create({
       const targetDate = new Date(now);
       targetDate.setDate(targetDate.getDate() + dayOffset);
       // Use local date string (YYYY-MM-DD) to avoid UTC timezone issues
-      const targetDay = targetDate.toLocaleDateString("en-CA");
+      const targetDay = moment(targetDate).format("YYYY-MM-DD");
 
       return series.values.filter((item) => {
         const [start] = this.parseValidTime(item.validTime);
         // Convert weather.gov UTC time to local date for comparison
-        return start.toLocaleDateString("en-CA") === targetDay;
+        return moment(start).format("YYYY-MM-DD") === targetDay;
       }).map((item) => item.value);
     };
 
