@@ -1,5 +1,6 @@
 /* eslint-disable camelcase */
 /* eslint-disable max-lines-per-function */
+/* eslint-disable max-lines */
 /**
  ********************************
  *
@@ -20,6 +21,8 @@
 const Log = require("logger");
 const NodeHelper = require("node_helper");
 const moment = require("moment");
+const path = require("path");
+const fs = require("fs");
 
 module.exports = NodeHelper.create({
 
@@ -51,6 +54,149 @@ module.exports = NodeHelper.create({
     }
     // metric and standard both use m/s
     return kmh * 0.277778;
+  },
+
+  // Cache file path for daily forecast values
+  getCacheFilePath () {
+    return path.join(__dirname, ".cache", "forecast-cache.json");
+  },
+
+  // Read cache from file
+  async readCache () {
+    const cacheFile = this.getCacheFilePath();
+    try {
+      const data = await fs.promises.readFile(cacheFile, "utf8");
+      return JSON.parse(data);
+    } catch (error) {
+      // File doesn't exist or is corrupt - return empty cache
+      if (error.code !== "ENOENT") {
+        Log.warn(`[MMM-OpenWeatherForecast] Error reading cache: ${error.message}`);
+      }
+    }
+    // Return empty cache structure
+    return {version: 1, location: "", days: {}};
+  },
+
+  // Write cache to file with 7-day limit
+  async writeCache (cacheData) {
+    const cacheFile = this.getCacheFilePath();
+    const cacheDir = path.dirname(cacheFile);
+
+    try {
+      // Ensure .cache directory exists
+      await fs.promises.mkdir(cacheDir, {recursive: true});
+
+      // Prune old entries (keep only 7 days)
+      const prunedData = this.pruneCache(cacheData);
+
+      await fs.promises.writeFile(cacheFile, JSON.stringify(prunedData, null, 2));
+    } catch (error) {
+      Log.warn(`[MMM-OpenWeatherForecast] Error writing cache: ${error.message}`);
+    }
+  },
+
+  // Prune cache to keep only last 7 days
+  pruneCache (cacheData) {
+    const days = cacheData.days || {};
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const cutoffDate = sevenDaysAgo.toLocaleDateString("en-CA"); // YYYY-MM-DD
+
+    const prunedDays = {};
+    for (const [dateKey, values] of Object.entries(days)) {
+      if (dateKey >= cutoffDate) {
+        prunedDays[dateKey] = values;
+      }
+    }
+
+    return {...cacheData, days: prunedDays};
+  },
+
+  // Merge daily forecast with cached values
+  // eslint-disable-next-line max-params
+  mergeDailyWithCache (daily, cacheData, latitude, longitude) {
+    const locationKey = `${parseFloat(latitude).toFixed(2)},${parseFloat(longitude).toFixed(2)}`;
+
+    // Clear cache if location changed significantly
+    let cache = cacheData;
+    if (cache.location && cache.location !== locationKey) {
+      Log.info("[MMM-OpenWeatherForecast] Location changed, clearing forecast cache");
+      cache = {version: 1, location: locationKey, days: {}};
+    }
+    cache.location = locationKey;
+
+    const mergedDaily = daily.map((day) => {
+      // Get date key in local timezone
+      const dateKey = new Date(day.dt * 1000).toLocaleDateString("en-CA");
+      const cached = cache.days[dateKey] || {};
+
+      // Merge values: keep best of cached vs new
+      const mergedTemp = {
+        day: day.temp?.day, // Don't merge - this is midday temp, not max
+        min: this.mergeMin(cached.minTemp, day.temp?.min),
+        max: this.mergeMax(cached.maxTemp, day.temp?.max),
+        night: day.temp?.night,
+        eve: day.temp?.eve,
+        morn: day.temp?.morn
+      };
+
+      const mergedWind = this.mergeMax(cached.maxWind, day.wind_speed);
+      const mergedGust = this.mergeMax(cached.maxGust, day.wind_gust);
+      const mergedPop = this.mergeMax(cached.maxPop, day.pop);
+      const mergedRain = this.mergeMax(cached.totalRain, day.rain);
+      const mergedSnow = this.mergeMax(cached.totalSnow, day.snow);
+      const mergedUvi = this.mergeMax(cached.maxUvi, day.uvi);
+
+      // Update cache entry
+      cache.days[dateKey] = {
+        maxTemp: mergedTemp.max,
+        minTemp: mergedTemp.min,
+        maxWind: mergedWind,
+        maxGust: mergedGust,
+        maxPop: mergedPop,
+        totalRain: mergedRain,
+        totalSnow: mergedSnow,
+        maxUvi: mergedUvi,
+        lastUpdated: Math.floor(Date.now() / 1000)
+      };
+
+      // Return merged day object
+      return {
+        ...day,
+        temp: mergedTemp,
+        wind_speed: mergedWind,
+        wind_gust: mergedGust,
+        pop: mergedPop,
+        rain: mergedRain,
+        snow: mergedSnow,
+        uvi: mergedUvi
+      };
+    });
+
+    return [mergedDaily, cache];
+  },
+
+  // Helper: merge by keeping max value
+  mergeMax (cached, current) {
+    if (cached === null || typeof cached === "undefined") {
+      return current;
+    }
+    if (current === null || typeof current === "undefined") {
+      return cached;
+    }
+    return Math.max(cached, current);
+  },
+
+  // Helper: merge by keeping min value
+  mergeMin (cached, current) {
+    if (cached === null || typeof cached === "undefined") {
+      return current;
+    }
+    if (current === null || typeof current === "undefined") {
+      return cached;
+    }
+    return Math.min(cached, current);
   },
 
   async socketNotificationReceived (notification, payload) {
@@ -132,8 +278,14 @@ module.exports = NodeHelper.create({
 
       // Transform to OpenWeather format
       const data = this.transformFreeDataToOpenWeatherFormat(gridData, sunData, uvData, alertsData, units);
-      data.instanceId = instanceId;
 
+      // Merge daily forecast with cached values for full-day max/min
+      const cache = await this.readCache();
+      const [mergedDaily, updatedCache] = this.mergeDailyWithCache(data.daily, cache, latitude, longitude);
+      data.daily = mergedDaily;
+      await this.writeCache(updatedCache);
+
+      data.instanceId = instanceId;
       this.sendSocketNotification("OPENWEATHER_FORECAST_DATA", data);
     } catch (error) {
       Log.error(`[MMM-OpenWeatherForecast] ${moment().format("D-MMM-YY HH:mm")} ** ERROR ** ${error}\n${error.stack}`);
@@ -487,11 +639,13 @@ module.exports = NodeHelper.create({
       }
       const targetDate = new Date(now);
       targetDate.setDate(targetDate.getDate() + dayOffset);
-      const targetDay = targetDate.toISOString().split("T")[0];
+      // Use local date string (YYYY-MM-DD) to avoid UTC timezone issues
+      const targetDay = targetDate.toLocaleDateString("en-CA");
 
       return series.values.filter((item) => {
         const [start] = this.parseValidTime(item.validTime);
-        return start.toISOString().split("T")[0] === targetDay;
+        // Convert weather.gov UTC time to local date for comparison
+        return start.toLocaleDateString("en-CA") === targetDay;
       }).map((item) => item.value);
     };
 
