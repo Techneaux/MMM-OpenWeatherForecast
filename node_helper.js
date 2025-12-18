@@ -1,5 +1,6 @@
 /* eslint-disable camelcase */
 /* eslint-disable max-lines-per-function */
+/* eslint-disable max-lines */
 /**
  ********************************
  *
@@ -20,6 +21,8 @@
 const Log = require("logger");
 const NodeHelper = require("node_helper");
 const moment = require("moment");
+const path = require("path");
+const fs = require("fs");
 
 module.exports = NodeHelper.create({
 
@@ -51,6 +54,152 @@ module.exports = NodeHelper.create({
     }
     // metric and standard both use m/s
     return kmh * 0.277778;
+  },
+
+  // Cache file path for daily forecast values
+  getCacheFilePath () {
+    return path.join(__dirname, ".cache", "forecast-cache.json");
+  },
+
+  // Read cache from file
+  async readCache () {
+    const cacheFile = this.getCacheFilePath();
+    try {
+      const data = await fs.promises.readFile(cacheFile, "utf8");
+      return JSON.parse(data);
+    } catch (error) {
+      // File doesn't exist or is corrupt - return empty cache
+      const isFileMissing = error.code === "ENOENT";
+      const isJsonParseError = error instanceof SyntaxError;
+      if (!isFileMissing && !isJsonParseError) {
+        Log.warn(`[MMM-OpenWeatherForecast] Error reading cache: ${error.message}`);
+      }
+    }
+    // Return empty cache structure
+    return {version: 1, location: "", days: {}};
+  },
+
+  // Write cache to file with 7-day limit
+  async writeCache (cacheData) {
+    const cacheFile = this.getCacheFilePath();
+    const cacheDir = path.dirname(cacheFile);
+
+    try {
+      // Ensure .cache directory exists
+      await fs.promises.mkdir(cacheDir, {recursive: true});
+
+      // Prune old entries (keep only 7 days)
+      const prunedData = this.pruneCache(cacheData);
+
+      await fs.promises.writeFile(cacheFile, JSON.stringify(prunedData, null, 2));
+    } catch (error) {
+      Log.warn(`[MMM-OpenWeatherForecast] Error writing cache: ${error.message}`);
+    }
+  },
+
+  // Prune cache to keep only last 7 days
+  pruneCache (cacheData) {
+    const days = cacheData.days || {};
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const cutoffDate = moment(sevenDaysAgo).format("YYYY-MM-DD");
+
+    const prunedDays = {};
+    // YYYY-MM-DD format is lexicographically sortable, so string comparison works for date ordering
+    for (const [dateKey, values] of Object.entries(days)) {
+      if (dateKey >= cutoffDate) {
+        prunedDays[dateKey] = values;
+      }
+    }
+
+    return {...cacheData, days: prunedDays};
+  },
+
+  // Merge daily forecast with cached values
+  // eslint-disable-next-line max-params
+  mergeDailyWithCache (daily, cacheData, latitude, longitude) {
+    const locationKey = `${parseFloat(latitude).toFixed(2)},${parseFloat(longitude).toFixed(2)}`;
+
+    // Clear cache if location changed significantly
+    let cache = cacheData;
+    if (cache.location && cache.location !== locationKey) {
+      Log.info("[MMM-OpenWeatherForecast] Location changed, clearing forecast cache");
+      cache = {version: 1, location: locationKey, days: {}};
+    }
+    cache.location = locationKey;
+
+    const mergedDaily = daily.map((day) => {
+      // Get date key in local timezone (YYYY-MM-DD format)
+      const dateKey = moment(day.dt * 1000).format("YYYY-MM-DD");
+      const cached = cache.days[dateKey] || {};
+
+      // Merge values: keep best of cached vs new
+      const mergedTemp = {
+        day: day.temp?.day, // Don't merge - this is midday temp, not max
+        min: this.mergeMin(cached.minTemp, day.temp?.min),
+        max: this.mergeMax(cached.maxTemp, day.temp?.max),
+        night: day.temp?.night,
+        eve: day.temp?.eve,
+        morn: day.temp?.morn
+      };
+
+      const mergedWind = this.mergeMax(cached.maxWind, day.wind_speed);
+      const mergedGust = this.mergeMax(cached.maxGust, day.wind_gust);
+      const mergedPop = this.mergeMax(cached.maxPop, day.pop);
+      const mergedRain = this.mergeMax(cached.maxRain, day.rain);
+      const mergedSnow = this.mergeMax(cached.maxSnow, day.snow);
+      const mergedUvi = this.mergeMax(cached.maxUvi, day.uvi);
+
+      // Update cache entry
+      cache.days[dateKey] = {
+        maxTemp: mergedTemp.max,
+        minTemp: mergedTemp.min,
+        maxWind: mergedWind,
+        maxGust: mergedGust,
+        maxPop: mergedPop,
+        maxRain: mergedRain,
+        maxSnow: mergedSnow,
+        maxUvi: mergedUvi,
+        lastUpdated: Math.floor(Date.now() / 1000)
+      };
+
+      // Return merged day object
+      return {
+        ...day,
+        temp: mergedTemp,
+        wind_speed: mergedWind,
+        wind_gust: mergedGust,
+        pop: mergedPop,
+        rain: mergedRain,
+        snow: mergedSnow,
+        uvi: mergedUvi
+      };
+    });
+
+    return [mergedDaily, cache];
+  },
+
+  // Helper: merge by keeping max value (handles null, undefined, NaN)
+  mergeMax (cached, current) {
+    if (cached === null || typeof cached === "undefined" || Number.isNaN(cached)) {
+      return current;
+    }
+    if (current === null || typeof current === "undefined" || Number.isNaN(current)) {
+      return cached;
+    }
+    return Math.max(cached, current);
+  },
+
+  // Helper: merge by keeping min value (handles null, undefined, NaN)
+  mergeMin (cached, current) {
+    if (cached === null || typeof cached === "undefined" || Number.isNaN(cached)) {
+      return current;
+    }
+    if (current === null || typeof current === "undefined" || Number.isNaN(current)) {
+      return cached;
+    }
+    return Math.min(cached, current);
   },
 
   async socketNotificationReceived (notification, payload) {
@@ -132,8 +281,14 @@ module.exports = NodeHelper.create({
 
       // Transform to OpenWeather format
       const data = this.transformFreeDataToOpenWeatherFormat(gridData, sunData, uvData, alertsData, units);
-      data.instanceId = instanceId;
 
+      // Merge daily forecast with cached values for full-day max/min
+      const cache = await this.readCache();
+      const [mergedDaily, updatedCache] = this.mergeDailyWithCache(data.daily, cache, latitude, longitude);
+      data.daily = mergedDaily;
+      await this.writeCache(updatedCache);
+
+      data.instanceId = instanceId;
       this.sendSocketNotification("OPENWEATHER_FORECAST_DATA", data);
     } catch (error) {
       Log.error(`[MMM-OpenWeatherForecast] ${moment().format("D-MMM-YY HH:mm")} ** ERROR ** ${error}\n${error.stack}`);
@@ -480,18 +635,38 @@ module.exports = NodeHelper.create({
       ? Math.max(...uvData.map((item) => item.UV_VALUE || 0))
       : 0;
 
-    // Get values for a specific day from a time series
-    const getValuesForDay = (series, dayOffset) => {
+    /*
+     * Get values for a specific day from a time series
+     * useOverlap: if true, include periods that overlap with target day at all
+     *             if false, only include periods that start on target day
+     */
+    const getValuesForDay = (series, dayOffset, useOverlap = false) => {
       if (!series || !series.values) {
         return [];
       }
       const targetDate = new Date(now);
       targetDate.setDate(targetDate.getDate() + dayOffset);
-      const targetDay = targetDate.toISOString().split("T")[0];
 
+      if (useOverlap) {
+        // Include periods that overlap with target day at all
+        const dayStart = new Date(targetDate);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayStartMs = dayStart.getTime();
+        const dayEndMs = dayStartMs + 86400000; // 24 hours in ms
+
+        return series.values.filter((item) => {
+          const [start, duration] = this.parseValidTime(item.validTime);
+          const startMs = start.getTime();
+          const endMs = startMs + duration;
+          return startMs < dayEndMs && endMs > dayStartMs;
+        }).map((item) => item.value);
+      }
+
+      // Original: check if start falls on target day
+      const targetDay = moment(targetDate).format("YYYY-MM-DD");
       return series.values.filter((item) => {
         const [start] = this.parseValidTime(item.validTime);
-        return start.toISOString().split("T")[0] === targetDay;
+        return moment(start).format("YYYY-MM-DD") === targetDay;
       }).map((item) => item.value);
     };
 
@@ -501,14 +676,22 @@ module.exports = NodeHelper.create({
       date.setDate(date.getDate() + i);
       date.setHours(12, 0, 0, 0); // Noon for daily icon
 
-      // Filter nulls first, then check length to avoid Math.max/min on empty arrays
+      /*
+       * Filter nulls first, then check length to avoid Math.max/min on empty arrays
+       * Temperature: maxTemp uses same day, minTemp uses next day (meteorological standard: "tonight's low")
+       */
       const validMaxTemps = getValuesForDay(props.maxTemperature, i).filter((v) => v !== null);
-      const validMinTemps = getValuesForDay(props.minTemperature, i).filter((v) => v !== null);
-      const validWindSpeeds = getValuesForDay(props.windSpeed, i).filter((v) => v !== null);
-      const validWindGusts = getValuesForDay(props.windGust, i).filter((v) => v !== null);
-      const validPops = getValuesForDay(props.probabilityOfPrecipitation, i).filter((v) => v !== null);
-      const rain = getValuesForDay(props.quantitativePrecipitation, i);
-      const snow = getValuesForDay(props.snowfallAmount, i);
+      let validMinTemps = getValuesForDay(props.minTemperature, i + 1).filter((v) => v !== null);
+      if (validMinTemps.length === 0) {
+        // Fallback for last day when i+1 has no data
+        validMinTemps = getValuesForDay(props.minTemperature, i).filter((v) => v !== null);
+      }
+      // Precip/Wind/POP: use overlap logic to include evening periods in "today"
+      const validWindSpeeds = getValuesForDay(props.windSpeed, i, true).filter((v) => v !== null);
+      const validWindGusts = getValuesForDay(props.windGust, i, true).filter((v) => v !== null);
+      const validPops = getValuesForDay(props.probabilityOfPrecipitation, i, true).filter((v) => v !== null);
+      const rain = getValuesForDay(props.quantitativePrecipitation, i, true);
+      const snow = getValuesForDay(props.snowfallAmount, i, true);
 
       const maxTemp = validMaxTemps.length > 0
         ? Math.max(...validMaxTemps)
@@ -562,7 +745,13 @@ module.exports = NodeHelper.create({
           eve: this.convertTemp(maxTemp, units),
           morn: this.convertTemp(minTemp, units)
         },
-        humidity: getValuesForDay(props.relativeHumidity, i)[0] || 50,
+        humidity: (() => {
+          const humidityValues = getValuesForDay(props.relativeHumidity, i, true).filter((v) => v !== null);
+          if (humidityValues.length === 0) {
+            return 50;
+          }
+          return humidityValues.reduce((sum, v) => sum + v, 0) / humidityValues.length;
+        })(),
         wind_speed: this.convertSpeed(maxWind, units),
         wind_gust: this.convertSpeed(maxGust, units),
         wind_deg: getValuesForDay(props.windDirection, i)[0] || 0,
