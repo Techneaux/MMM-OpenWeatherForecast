@@ -106,6 +106,7 @@ module.exports = NodeHelper.create({
     const cutoffDate = moment(sevenDaysAgo).format("YYYY-MM-DD");
 
     const prunedDays = {};
+    // YYYY-MM-DD format is lexicographically sortable, so string comparison works for date ordering
     for (const [dateKey, values] of Object.entries(days)) {
       if (dateKey >= cutoffDate) {
         prunedDays[dateKey] = values;
@@ -146,8 +147,8 @@ module.exports = NodeHelper.create({
       const mergedWind = this.mergeMax(cached.maxWind, day.wind_speed);
       const mergedGust = this.mergeMax(cached.maxGust, day.wind_gust);
       const mergedPop = this.mergeMax(cached.maxPop, day.pop);
-      const mergedRain = this.mergeMax(cached.totalRain, day.rain);
-      const mergedSnow = this.mergeMax(cached.totalSnow, day.snow);
+      const mergedRain = this.mergeMax(cached.maxRain, day.rain);
+      const mergedSnow = this.mergeMax(cached.maxSnow, day.snow);
       const mergedUvi = this.mergeMax(cached.maxUvi, day.uvi);
 
       // Update cache entry
@@ -157,8 +158,8 @@ module.exports = NodeHelper.create({
         maxWind: mergedWind,
         maxGust: mergedGust,
         maxPop: mergedPop,
-        totalRain: mergedRain,
-        totalSnow: mergedSnow,
+        maxRain: mergedRain,
+        maxSnow: mergedSnow,
         maxUvi: mergedUvi,
         lastUpdated: Math.floor(Date.now() / 1000)
       };
@@ -634,19 +635,37 @@ module.exports = NodeHelper.create({
       ? Math.max(...uvData.map((item) => item.UV_VALUE || 0))
       : 0;
 
-    // Get values for a specific day from a time series
-    const getValuesForDay = (series, dayOffset) => {
+    /*
+     * Get values for a specific day from a time series
+     * useOverlap: if true, include periods that overlap with target day at all
+     *             if false, only include periods that start on target day
+     */
+    const getValuesForDay = (series, dayOffset, useOverlap = false) => {
       if (!series || !series.values) {
         return [];
       }
       const targetDate = new Date(now);
       targetDate.setDate(targetDate.getDate() + dayOffset);
-      // Use local date string (YYYY-MM-DD) to avoid UTC timezone issues
-      const targetDay = moment(targetDate).format("YYYY-MM-DD");
 
+      if (useOverlap) {
+        // Include periods that overlap with target day at all
+        const dayStart = new Date(targetDate);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayStartMs = dayStart.getTime();
+        const dayEndMs = dayStartMs + 86400000; // 24 hours in ms
+
+        return series.values.filter((item) => {
+          const [start, duration] = this.parseValidTime(item.validTime);
+          const startMs = start.getTime();
+          const endMs = startMs + duration;
+          return startMs < dayEndMs && endMs > dayStartMs;
+        }).map((item) => item.value);
+      }
+
+      // Original: check if start falls on target day
+      const targetDay = moment(targetDate).format("YYYY-MM-DD");
       return series.values.filter((item) => {
         const [start] = this.parseValidTime(item.validTime);
-        // Convert weather.gov UTC time to local date for comparison
         return moment(start).format("YYYY-MM-DD") === targetDay;
       }).map((item) => item.value);
     };
@@ -657,14 +676,22 @@ module.exports = NodeHelper.create({
       date.setDate(date.getDate() + i);
       date.setHours(12, 0, 0, 0); // Noon for daily icon
 
-      // Filter nulls first, then check length to avoid Math.max/min on empty arrays
+      /*
+       * Filter nulls first, then check length to avoid Math.max/min on empty arrays
+       * Temperature: maxTemp uses same day, minTemp uses next day (meteorological standard: "tonight's low")
+       */
       const validMaxTemps = getValuesForDay(props.maxTemperature, i).filter((v) => v !== null);
-      const validMinTemps = getValuesForDay(props.minTemperature, i).filter((v) => v !== null);
-      const validWindSpeeds = getValuesForDay(props.windSpeed, i).filter((v) => v !== null);
-      const validWindGusts = getValuesForDay(props.windGust, i).filter((v) => v !== null);
-      const validPops = getValuesForDay(props.probabilityOfPrecipitation, i).filter((v) => v !== null);
-      const rain = getValuesForDay(props.quantitativePrecipitation, i);
-      const snow = getValuesForDay(props.snowfallAmount, i);
+      let validMinTemps = getValuesForDay(props.minTemperature, i + 1).filter((v) => v !== null);
+      if (validMinTemps.length === 0) {
+        // Fallback for last day when i+1 has no data
+        validMinTemps = getValuesForDay(props.minTemperature, i).filter((v) => v !== null);
+      }
+      // Precip/Wind/POP: use overlap logic to include evening periods in "today"
+      const validWindSpeeds = getValuesForDay(props.windSpeed, i, true).filter((v) => v !== null);
+      const validWindGusts = getValuesForDay(props.windGust, i, true).filter((v) => v !== null);
+      const validPops = getValuesForDay(props.probabilityOfPrecipitation, i, true).filter((v) => v !== null);
+      const rain = getValuesForDay(props.quantitativePrecipitation, i, true);
+      const snow = getValuesForDay(props.snowfallAmount, i, true);
 
       const maxTemp = validMaxTemps.length > 0
         ? Math.max(...validMaxTemps)
@@ -718,7 +745,13 @@ module.exports = NodeHelper.create({
           eve: this.convertTemp(maxTemp, units),
           morn: this.convertTemp(minTemp, units)
         },
-        humidity: getValuesForDay(props.relativeHumidity, i)[0] || 50,
+        humidity: (() => {
+          const humidityValues = getValuesForDay(props.relativeHumidity, i, true).filter((v) => v !== null);
+          if (humidityValues.length === 0) {
+            return 50;
+          }
+          return humidityValues.reduce((sum, v) => sum + v, 0) / humidityValues.length;
+        })(),
         wind_speed: this.convertSpeed(maxWind, units),
         wind_gust: this.convertSpeed(maxGust, units),
         wind_deg: getValuesForDay(props.windDirection, i)[0] || 0,
