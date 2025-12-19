@@ -280,7 +280,7 @@ module.exports = NodeHelper.create({
       }
 
       // Transform to OpenWeather format
-      const data = this.transformFreeDataToOpenWeatherFormat(gridData, sunData, uvData, alertsData, units);
+      const data = this.transformFreeDataToOpenWeatherFormat(gridData, sunData, uvData, alertsData, units, latitude, longitude);
 
       // Merge daily forecast with cached values for full-day max/min
       const cache = await this.readCache();
@@ -406,7 +406,7 @@ module.exports = NodeHelper.create({
 
   // Transform free provider data to OpenWeather format
   // eslint-disable-next-line max-params
-  transformFreeDataToOpenWeatherFormat (gridData, sunData, uvData, alertsData, units) {
+  transformFreeDataToOpenWeatherFormat (gridData, sunData, uvData, alertsData, units, latitude, longitude) {
     const props = gridData.properties;
     const now = new Date();
 
@@ -474,16 +474,9 @@ module.exports = NodeHelper.create({
     // Build alerts
     const alerts = this.buildAlerts(alertsData);
 
-    // Extract coordinates with warning if missing
-    const lat = gridData.geometry?.coordinates?.[1];
-    const lon = gridData.geometry?.coordinates?.[0];
-    if (typeof lat !== "number" || typeof lon !== "number") {
-      Log.warn("[MMM-OpenWeatherForecast] Missing geometry coordinates in weather.gov response");
-    }
-
     return {
-      lat: lat || 0,
-      lon: lon || 0,
+      lat: latitude,
+      lon: longitude,
       timezone: props.timeZone || "America/Chicago",
       timezone_offset: 0,
       current,
