@@ -1,4 +1,4 @@
-/* eslint-disable camelcase */
+/* eslint-disable camelcase, max-lines */
 /* globals config, moment, Skycons */
 
 /**
@@ -306,8 +306,12 @@ Module.register("MMM-OpenWeatherForecast", {
 
         this.updateDom(this.config.updateFadeSpeed);
 
-        // broadcast weather update
+        // broadcast weather update (original format)
         this.sendNotification("OPENWEATHER_FORECAST_WEATHER_UPDATE", payload);
+
+        // broadcast in MagicMirror default weather format for compatibility
+        const weatherUpdatedPayload = this.transformToWeatherUpdated(payload);
+        this.sendNotification("WEATHER_UPDATED", weatherUpdatedPayload);
 
         // start icon playback
         if (this.config.useAnimatedIcons) {
@@ -585,6 +589,125 @@ Module.register("MMM-OpenWeatherForecast", {
    */
   getOrdinal (bearing) {
     return this.config.label_ordinals[Math.round(bearing * 16 / 360) % 16];
+  },
+
+  /**
+   * Maps OpenWeather weather condition to MagicMirror weatherType
+   * @param {string} owMain - OpenWeather weather[0].main value
+   * @param {string} iconCode - OpenWeather icon code (e.g., "01d", "10n")
+   * @returns {string} - MagicMirror weatherType (Weather Icons class name)
+   */
+  mapWeatherType (owMain, iconCode) {
+    const isNight = iconCode?.endsWith("n");
+    const mapping = {
+      Clear: isNight
+        ? "night-clear"
+        : "day-sunny",
+      Clouds: isNight
+        ? "night-alt-cloudy"
+        : "day-cloudy",
+      Rain: isNight
+        ? "night-alt-rain"
+        : "day-rain",
+      Drizzle: isNight
+        ? "night-alt-showers"
+        : "day-showers",
+      Thunderstorm: isNight
+        ? "night-alt-thunderstorm"
+        : "day-thunderstorm",
+      Snow: isNight
+        ? "night-alt-snow"
+        : "day-snow",
+      Mist: isNight
+        ? "night-fog"
+        : "day-fog",
+      Fog: isNight
+        ? "night-fog"
+        : "day-fog",
+      Haze: isNight
+        ? "night-fog"
+        : "day-fog",
+      Smoke: "smoke",
+      Dust: "dust",
+      Sand: "sandstorm",
+      Ash: "volcano",
+      Squall: "strong-wind",
+      Tornado: "tornado"
+    };
+    return mapping[owMain] || (isNight
+      ? "night-clear"
+      : "day-sunny");
+  },
+
+  // Helper: get precipitation amount from rain/snow data
+  getPrecipAmount (data) {
+    const r = typeof data.rain === "number"
+      ? data.rain
+      : data.rain?.["1h"] || 0;
+    const s = typeof data.snow === "number"
+      ? data.snow
+      : data.snow?.["1h"] || 0;
+    return r + s;
+  },
+  // Helper: unix timestamp to Date
+  unixToDate (ts) {
+    return ts
+      ? new Date(ts * 1000)
+      : null;
+  },
+  // Helper: get daily temp property or fallback
+  getDailyTemp (data, prop) {
+    return data.temp?.[prop] ?? null;
+  },
+  // Creates WeatherObject from OpenWeather data
+  createWeatherObject (data, type) {
+    const isDaily = type === "daily";
+    const isHourly = type === "hourly";
+    return {
+      date: new Date(data.dt * 1000),
+      weatherType: this.mapWeatherType(data.weather?.[0]?.main || "Clear", data.weather?.[0]?.icon),
+      humidity: data.humidity ?? null,
+      windSpeed: data.wind_speed ?? null,
+      windFromDirection: data.wind_deg ?? null,
+      precipitationProbability: data.pop ?? null,
+      precipitationAmount: this.getPrecipAmount(data),
+      temperature: isDaily
+        ? this.getDailyTemp(data, "day")
+        : data.temp,
+      feelsLikeTemp: isDaily
+        ? data.feels_like?.day ?? null
+        : data.feels_like,
+      minTemperature: isDaily
+        ? this.getDailyTemp(data, "min")
+        : null,
+      maxTemperature: isDaily
+        ? this.getDailyTemp(data, "max")
+        : null,
+      sunrise: isHourly
+        ? null
+        : this.unixToDate(data.sunrise),
+      sunset: isHourly
+        ? null
+        : this.unixToDate(data.sunset)
+    };
+  },
+  // Transforms OpenWeather payload to MagicMirror WEATHER_UPDATED format
+  transformToWeatherUpdated (owData) {
+    const cur = this.createWeatherObject(owData.current, "current");
+    if (owData.daily?.[0]) {
+      cur.minTemperature = owData.daily[0].temp?.min ?? null;
+      cur.maxTemperature = owData.daily[0].temp?.max ?? null;
+    }
+    const self = this;
+    return {
+      currentWeather: cur,
+      forecastArray: (owData.daily || []).map((d) => self.createWeatherObject(d, "daily")),
+      hourlyArray: (owData.hourly || []).map((h) => self.createWeatherObject(h, "hourly")),
+      locationName: `${owData.lat}, ${owData.lon}`,
+      providerName: this.config.weatherProvider === "free"
+        ? "weather.gov"
+        : "OpenWeather"
+    };
   },
 
   /*
