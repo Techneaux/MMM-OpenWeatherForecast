@@ -129,55 +129,90 @@ module.exports = NodeHelper.create({
     }
     cache.location = locationKey;
 
-    const mergedDaily = daily.map((day) => {
+    const mergedDaily = daily.map((day, dayIndex) => {
       // Get date key in local timezone (YYYY-MM-DD format)
       const dateKey = moment(day.dt * 1000).format("YYYY-MM-DD");
       const cached = cache.days[dateKey] || {};
 
-      // Merge values: keep best of cached vs new
-      const mergedTemp = {
-        day: day.temp?.day, // Don't merge - this is midday temp, not max
-        min: this.mergeMin(cached.minTemp, day.temp?.min),
-        max: this.mergeMax(cached.maxTemp, day.temp?.max),
-        night: day.temp?.night,
-        eve: day.temp?.eve,
-        morn: day.temp?.morn
-      };
+      /*
+       * Day 0 (today): Use max/min merge to preserve earlier forecasts when API period shrinks
+       * Future days: Use current API values to honor forecast revisions (cache as fallback only)
+       */
+      const isToday = dayIndex === 0;
+      const merged = this.mergeValuesForDay(day, cached, isToday);
 
-      const mergedWind = this.mergeMax(cached.maxWind, day.wind_speed);
-      const mergedGust = this.mergeMax(cached.maxGust, day.wind_gust);
-      const mergedPop = this.mergeMax(cached.maxPop, day.pop);
-      const mergedRain = this.mergeMax(cached.maxRain, day.rain);
-      const mergedSnow = this.mergeMax(cached.maxSnow, day.snow);
-      const mergedUvi = this.mergeMax(cached.maxUvi, day.uvi);
-
-      // Update cache entry
+      // Update cache entry (cache values for potential fallback use)
       cache.days[dateKey] = {
-        maxTemp: mergedTemp.max,
-        minTemp: mergedTemp.min,
-        maxWind: mergedWind,
-        maxGust: mergedGust,
-        maxPop: mergedPop,
-        maxRain: mergedRain,
-        maxSnow: mergedSnow,
-        maxUvi: mergedUvi,
+        maxTemp: merged.temp.max,
+        minTemp: merged.temp.min,
+        maxWind: merged.wind,
+        maxGust: merged.gust,
+        maxPop: merged.pop,
+        maxRain: merged.rain,
+        maxSnow: merged.snow,
+        maxUvi: merged.uvi,
         lastUpdated: Math.floor(Date.now() / 1000)
       };
 
       // Return merged day object
       return {
         ...day,
-        temp: mergedTemp,
-        wind_speed: mergedWind,
-        wind_gust: mergedGust,
-        pop: mergedPop,
-        rain: mergedRain,
-        snow: mergedSnow,
-        uvi: mergedUvi
+        temp: merged.temp,
+        wind_speed: merged.wind,
+        wind_gust: merged.gust,
+        pop: merged.pop,
+        rain: merged.rain,
+        snow: merged.snow,
+        uvi: merged.uvi
       };
     });
 
     return [mergedDaily, cache];
+  },
+
+  /*
+   * Helper: merge values for a single day based on whether it's today or a future day
+   * Today: Use max/min merge to preserve earlier forecasts when API period shrinks
+   * Future: Use current API values, cache as fallback only when null (honors forecast revisions)
+   */
+  mergeValuesForDay (day, cached, isToday) {
+    return {
+      temp: this.mergeTempForDay(day.temp, cached, isToday),
+      wind: isToday
+        ? this.mergeMax(cached.maxWind, day.wind_speed)
+        : day.wind_speed ?? cached.maxWind,
+      gust: isToday
+        ? this.mergeMax(cached.maxGust, day.wind_gust)
+        : day.wind_gust ?? cached.maxGust,
+      pop: isToday
+        ? this.mergeMax(cached.maxPop, day.pop)
+        : day.pop ?? cached.maxPop,
+      rain: isToday
+        ? this.mergeMax(cached.maxRain, day.rain)
+        : day.rain ?? cached.maxRain,
+      snow: isToday
+        ? this.mergeMax(cached.maxSnow, day.snow)
+        : day.snow ?? cached.maxSnow,
+      uvi: isToday
+        ? this.mergeMax(cached.maxUvi, day.uvi)
+        : day.uvi ?? cached.maxUvi
+    };
+  },
+
+  // Helper: merge temperature values for a day
+  mergeTempForDay (temp, cached, isToday) {
+    return {
+      day: temp?.day,
+      min: isToday
+        ? this.mergeMin(cached.minTemp, temp?.min)
+        : temp?.min ?? cached.minTemp,
+      max: isToday
+        ? this.mergeMax(cached.maxTemp, temp?.max)
+        : temp?.max ?? cached.maxTemp,
+      night: temp?.night,
+      eve: temp?.eve,
+      morn: temp?.morn
+    };
   },
 
   // Helper: merge by keeping max value (handles null, undefined, NaN)
@@ -574,8 +609,12 @@ module.exports = NodeHelper.create({
     const coverage = condition.coverage || "";
     const intensity = condition.intensity || "";
 
-    // Simplified mapping
-    const desc = `${coverage} ${intensity} ${weather}`.toLowerCase().trim();
+    // Simplified mapping - replace underscores with spaces for proper formatting
+    const desc = `${coverage} ${intensity} ${weather}`
+      .replace(/_/gu, " ")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/gu, " ");
 
     if (weather.includes("thunder") || weather.includes("storm")) {
       return {id: 200, main: "Thunderstorm", description: desc, icon: `11${dayNight}`};
