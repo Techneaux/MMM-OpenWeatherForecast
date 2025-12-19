@@ -639,37 +639,68 @@ Module.register("MMM-OpenWeatherForecast", {
       : "day-sunny");
   },
 
-  // Helper: get precipitation amount from rain/snow data
+  /**
+   * Gets precipitation amount from rain/snow data
+   * Handles both numeric values (daily) and object format with "1h" key (hourly)
+   * @param {Object} data - Weather data object containing rain/snow properties
+   * @returns {number} - Total precipitation amount (rain + snow)
+   */
   getPrecipAmount (data) {
-    const r = typeof data.rain === "number"
-      ? data.rain
-      : data.rain?.["1h"] || 0;
-    const s = typeof data.snow === "number"
-      ? data.snow
-      : data.snow?.["1h"] || 0;
-    return r + s;
+    const getAmount = (value) => {
+      if (typeof value === "number") {
+        return value;
+      }
+      if (value && typeof value === "object" && Object.hasOwn(value, "1h")) {
+        const amount = value["1h"];
+        return typeof amount === "number"
+          ? amount
+          : 0;
+      }
+      return 0;
+    };
+    return getAmount(data.rain) + getAmount(data.snow);
   },
-  // Helper: unix timestamp to Date
+
+  /**
+   * Converts unix timestamp to Date object
+   * @param {number|null} ts - Unix timestamp in seconds
+   * @returns {Date|null} - Date object or null if timestamp is falsy
+   */
   unixToDate (ts) {
     return ts
       ? new Date(ts * 1000)
       : null;
   },
-  // Helper: get daily temp property or fallback
+
+  /**
+   * Gets daily temperature property with null fallback
+   * @param {Object} data - Daily weather data object
+   * @param {string} prop - Property name (e.g., "day", "min", "max")
+   * @returns {number|null} - Temperature value or null
+   */
   getDailyTemp (data, prop) {
     return data.temp?.[prop] ?? null;
   },
-  // Creates WeatherObject from OpenWeather data
+
+  /**
+   * Creates a MagicMirror WeatherObject from OpenWeather data
+   * @param {Object} data - OpenWeather current/hourly/daily data item
+   * @param {string} type - Data type: "current", "hourly", or "daily"
+   * @returns {Object} - WeatherObject-compatible object
+   */
   createWeatherObject (data, type) {
     const isDaily = type === "daily";
     const isHourly = type === "hourly";
+    const hasPop = isDaily || isHourly;
     return {
       date: new Date(data.dt * 1000),
       weatherType: this.mapWeatherType(data.weather?.[0]?.main || "Clear", data.weather?.[0]?.icon),
       humidity: data.humidity ?? null,
       windSpeed: data.wind_speed ?? null,
       windFromDirection: data.wind_deg ?? null,
-      precipitationProbability: data.pop ?? null,
+      precipitationProbability: hasPop
+        ? data.pop ?? null
+        : null,
       precipitationAmount: this.getPrecipAmount(data),
       temperature: isDaily
         ? this.getDailyTemp(data, "day")
@@ -691,18 +722,22 @@ Module.register("MMM-OpenWeatherForecast", {
         : this.unixToDate(data.sunset)
     };
   },
-  // Transforms OpenWeather payload to MagicMirror WEATHER_UPDATED format
+
+  /**
+   * Transforms OpenWeather payload to MagicMirror WEATHER_UPDATED format
+   * @param {Object} owData - OpenWeather One Call API response data
+   * @returns {Object} - WEATHER_UPDATED notification payload
+   */
   transformToWeatherUpdated (owData) {
     const cur = this.createWeatherObject(owData.current, "current");
     if (owData.daily?.[0]) {
       cur.minTemperature = owData.daily[0].temp?.min ?? null;
       cur.maxTemperature = owData.daily[0].temp?.max ?? null;
     }
-    const self = this;
     return {
       currentWeather: cur,
-      forecastArray: (owData.daily || []).map((d) => self.createWeatherObject(d, "daily")),
-      hourlyArray: (owData.hourly || []).map((h) => self.createWeatherObject(h, "hourly")),
+      forecastArray: (owData.daily || []).map((d) => this.createWeatherObject(d, "daily")),
+      hourlyArray: (owData.hourly || []).map((h) => this.createWeatherObject(h, "hourly")),
       locationName: `${owData.lat}, ${owData.lon}`,
       providerName: this.config.weatherProvider === "free"
         ? "weather.gov"
