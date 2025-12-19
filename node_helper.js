@@ -655,10 +655,8 @@ module.exports = NodeHelper.create({
         }).map((item) => item.value);
       }
 
-      // Check if start falls on target day (use UTC for weather.gov data)
-      const targetDay = moment(targetDate)
-        .utc()
-        .format("YYYY-MM-DD");
+      // Match local target day against UTC date from weather.gov timestamps
+      const targetDay = moment(targetDate).format("YYYY-MM-DD");
       return series.values.filter((item) => {
         const [start] = this.parseValidTime(item.validTime);
         return moment(start)
