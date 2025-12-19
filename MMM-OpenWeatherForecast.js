@@ -250,15 +250,30 @@ Module.register("MMM-OpenWeatherForecast", {
       this.config.iconset = this.config.iconset.replace("c", "m");
     }
 
-    // start data poll
+    this.startDataPoll();
+  },
+
+  startDataPoll () {
     const self = this;
+    const updateIntervalMs = this.config.updateInterval * 60 * 1000;
+    this.lastUpdateTime = Date.now();
+
     setTimeout(() => {
-      // first data pull is delayed by config
       self.getData();
+      self.lastUpdateTime = Date.now();
 
       setInterval(() => {
+        const now = Date.now();
+        const timeSinceLastUpdate = now - self.lastUpdateTime;
+
+        // Detect wake from sleep: if more time passed than expected interval + 2 second buffer
+        if (timeSinceLastUpdate > updateIntervalMs + 2000) {
+          Log.info("[MMM-OpenWeatherForecast] Wake detected, refreshing stale data");
+        }
+
         self.getData();
-      }, self.config.updateInterval * 60 * 1000); // convert to milliseconds
+        self.lastUpdateTime = now;
+      }, updateIntervalMs);
     }, this.config.requestDelay);
   },
 
