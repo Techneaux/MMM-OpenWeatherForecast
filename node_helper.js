@@ -1,4 +1,4 @@
-/* eslint-disable camelcase */
+ 
 
 /**
  ********************************
@@ -360,7 +360,7 @@ module.exports = NodeHelper.create({
   },
 
   // Transform free provider data to OpenWeather format
-  // eslint-disable-next-line max-params, max-lines-per-function
+   
   transformFreeDataToOpenWeatherFormat (gridData, forecastData, hourlyForecastData, sunData, uvData, alertsData, units, latitude, longitude) {
     const props = gridData.properties;
     const now = new Date();
@@ -517,7 +517,7 @@ module.exports = NodeHelper.create({
   },
 
   // Map weather.gov condition to OpenWeather format
-  // eslint-disable-next-line complexity
+   
   mapWeatherCondition (condition, timestamp = null, sunrise = null, sunset = null) {
     // Determine day/night based on sunrise/sunset if available
     const checkTime = timestamp
@@ -585,7 +585,7 @@ module.exports = NodeHelper.create({
    * @param {boolean} isDaytime - Whether it's daytime (from forecast period)
    * @returns {Object} Weather condition object matching OpenWeather format
    */
-  // eslint-disable-next-line complexity
+   
   parseShortForecast (shortForecast, isDaytime) {
     if (!shortForecast) {
       return null;
@@ -624,6 +624,11 @@ module.exports = NodeHelper.create({
         return {id: 803, main: "Clouds", description: shortForecast.toLowerCase(), icon: `04${dayNight}`};
       }
       return {id: 804, main: "Clouds", description: shortForecast.toLowerCase(), icon: `04${dayNight}`};
+    }
+
+    // Partially clear conditions (sunny/clear side phrasing)
+    if (text.includes("partly sunny") || text.includes("mostly sunny") || text.includes("mostly clear")) {
+      return {id: 801, main: "Clouds", description: shortForecast.toLowerCase(), icon: `02${dayNight}`};
     }
 
     // Clear conditions
@@ -794,7 +799,7 @@ module.exports = NodeHelper.create({
   },
 
   // Build daily forecast using /forecast periods for high/low temps
-  // eslint-disable-next-line complexity, max-lines-per-function
+   
   buildDailyForecast (props, forecastData, sunData, uvData, units, timezone) {
     const daily = [];
     const now = new Date();

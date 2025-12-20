@@ -1,14 +1,14 @@
-/* eslint-disable @stylistic/lines-around-comment */
-/* eslint-disable logical-assignment-operators */
-/* eslint-disable init-declarations */
-/* eslint-disable max-statements */
-/* eslint-disable max-params */
-/* eslint-disable max-lines-per-function */
-/* eslint-disable func-style */
-/* eslint-disable func-names */
-/* eslint-disable no-underscore-dangle */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-invalid-this */
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 
 (function (global) {
   /*
