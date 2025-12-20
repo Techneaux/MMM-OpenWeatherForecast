@@ -124,8 +124,9 @@ module.exports = NodeHelper.create({
       }
 
       // Now fetch forecast and other data in parallel (grid info is cached)
-      const [forecastData, sunData, uvData, alertsData] = await Promise.all([
+      const [forecastData, hourlyForecastData, sunData, uvData, alertsData] = await Promise.all([
         this.fetchWeatherGovForecast(latitude, longitude, units),
+        this.fetchWeatherGovHourlyForecast(latitude, longitude),
         this.fetchSunriseSunsetData(latitude, longitude),
         zipcode
           ? this.fetchEpaUvData(zipcode)
@@ -134,7 +135,7 @@ module.exports = NodeHelper.create({
       ]);
 
       // Transform to OpenWeather format
-      const data = this.transformFreeDataToOpenWeatherFormat(gridData, forecastData, sunData, uvData, alertsData, units, latitude, longitude);
+      const data = this.transformFreeDataToOpenWeatherFormat(gridData, forecastData, hourlyForecastData, sunData, uvData, alertsData, units, latitude, longitude);
 
       data.instanceId = instanceId;
       this.sendSocketNotification("OPENWEATHER_FORECAST_DATA", data);
@@ -315,6 +316,35 @@ module.exports = NodeHelper.create({
     }
   },
 
+  // Fetch weather.gov hourly forecast (168 hours with conditions)
+  async fetchWeatherGovHourlyForecast (latitude, longitude) {
+    const cacheKey = `${latitude},${longitude}`;
+    const gridInfo = this.gridPointCache[cacheKey];
+
+    if (!gridInfo) {
+      Log.warn("[MMM-OpenWeatherForecast] Grid info not cached, cannot fetch hourly forecast");
+      return null;
+    }
+
+    const url = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}/forecast/hourly`;
+
+    try {
+      const response = await fetch(url, {
+        headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
+      });
+
+      if (response.status !== 200) {
+        Log.error(`[MMM-OpenWeatherForecast] weather.gov hourly forecast API error: ${response.status}`);
+        return null;
+      }
+
+      return await response.json();
+    } catch (error) {
+      Log.error(`[MMM-OpenWeatherForecast] weather.gov hourly forecast fetch error: ${error}`);
+      return null;
+    }
+  },
+
   /**
    * Get current hour in a specific timezone
    * @param {string} timezone - IANA timezone (e.g., "America/Chicago")
@@ -331,10 +361,11 @@ module.exports = NodeHelper.create({
 
   // Transform free provider data to OpenWeather format
   // eslint-disable-next-line max-params
-  transformFreeDataToOpenWeatherFormat (gridData, forecastData, sunData, uvData, alertsData, units, latitude, longitude) {
+  transformFreeDataToOpenWeatherFormat (gridData, forecastData, hourlyForecastData, sunData, uvData, alertsData, units, latitude, longitude) {
     const props = gridData.properties;
     const now = new Date();
     const timezone = props.timeZone || "America/Chicago";
+    const hourlyPeriods = hourlyForecastData?.properties?.periods || [];
 
     // Helper to get current value from a weather.gov time series
     const getCurrentValue = (series) => {
@@ -368,6 +399,12 @@ module.exports = NodeHelper.create({
       return Math.max(...uvData.map((item) => item.UV_VALUE || 0));
     };
 
+    // Get current weather condition from hourly forecast (first period)
+    const currentHourlyPeriod = hourlyPeriods[0];
+    const currentWeatherCondition = currentHourlyPeriod
+      ? [this.parseShortForecast(currentHourlyPeriod.shortForecast, currentHourlyPeriod.isDaytime)]
+      : this.getWeatherCondition(props, sunData);
+
     // Build current conditions
     const current = {
       dt: Math.floor(now.getTime() / 1000),
@@ -388,14 +425,14 @@ module.exports = NodeHelper.create({
       sunset: sunData
         ? Math.floor(new Date(sunData.sunset).getTime() / 1000)
         : null,
-      weather: this.getWeatherCondition(props, sunData)
+      weather: currentWeatherCondition
     };
 
     // Build daily forecast using forecast periods for high/low temps
     const daily = this.buildDailyForecast(props, forecastData, sunData, uvData, units, timezone);
 
     // Build hourly forecast
-    const hourly = this.buildHourlyForecast(props, sunData, units);
+    const hourly = this.buildHourlyForecast(props, hourlyPeriods, sunData, units);
 
     // Build alerts
     const alerts = this.buildAlerts(alertsData);
@@ -540,6 +577,92 @@ module.exports = NodeHelper.create({
   },
 
   /**
+   * Parse shortForecast text from /forecast API into weather condition object
+   * @param {string} shortForecast - Text like "Sunny", "Mostly Cloudy", "Chance Light Snow"
+   * @param {boolean} isDaytime - Whether it's daytime (from forecast period)
+   * @returns {Object} Weather condition object matching OpenWeather format
+   */
+  // eslint-disable-next-line complexity
+  parseShortForecast (shortForecast, isDaytime) {
+    if (!shortForecast) {
+      return null;
+    }
+
+    const text = shortForecast.toLowerCase();
+    const dayNight = isDaytime
+      ? "d"
+      : "n";
+
+    // Check for precipitation types first (most specific)
+    if (text.includes("thunder") || text.includes("storm")) {
+      return {id: 200, main: "Thunderstorm", description: shortForecast.toLowerCase(), icon: `11${dayNight}`};
+    }
+    if (text.includes("snow") || text.includes("blizzard") || text.includes("flurries")) {
+      return {id: 600, main: "Snow", description: shortForecast.toLowerCase(), icon: `13${dayNight}`};
+    }
+    if (text.includes("sleet") || text.includes("freezing") || text.includes("ice")) {
+      return {id: 611, main: "Sleet", description: shortForecast.toLowerCase(), icon: `13${dayNight}`};
+    }
+    if (text.includes("rain") || text.includes("showers") || text.includes("drizzle")) {
+      return {id: 500, main: "Rain", description: shortForecast.toLowerCase(), icon: `10${dayNight}`};
+    }
+
+    // Atmospheric conditions
+    if (text.includes("fog") || text.includes("mist") || text.includes("haze") || text.includes("smoke")) {
+      return {id: 741, main: "Fog", description: shortForecast.toLowerCase(), icon: `50${dayNight}`};
+    }
+
+    // Cloud cover
+    if (text.includes("overcast") || text.includes("cloudy")) {
+      if (text.includes("partly") || text.includes("mostly clear") || text.includes("mostly sunny")) {
+        return {id: 801, main: "Clouds", description: shortForecast.toLowerCase(), icon: `02${dayNight}`};
+      }
+      if (text.includes("mostly cloudy")) {
+        return {id: 803, main: "Clouds", description: shortForecast.toLowerCase(), icon: `04${dayNight}`};
+      }
+      return {id: 804, main: "Clouds", description: shortForecast.toLowerCase(), icon: `04${dayNight}`};
+    }
+
+    // Clear conditions
+    if (text.includes("sunny") || text.includes("clear")) {
+      return {id: 800, main: "Clear", description: shortForecast.toLowerCase(), icon: `01${dayNight}`};
+    }
+
+    // Wind
+    if (text.includes("wind") || text.includes("breezy") || text.includes("blustery")) {
+      return {id: 771, main: "Wind", description: shortForecast.toLowerCase(), icon: `50${dayNight}`};
+    }
+
+    // Default to clear if no match
+    return {id: 800, main: "Clear", description: shortForecast.toLowerCase(), icon: `01${dayNight}`};
+  },
+
+  /**
+   * Find the hourly forecast period that contains the given time
+   * @param {Array} periods - Hourly forecast periods from /forecast/hourly API
+   * @param {Date} targetTime - The time to find a period for
+   * @returns {Object|null} The matching forecast period or null
+   */
+  findHourlyPeriod (periods, targetTime) {
+    if (!periods || periods.length === 0) {
+      return null;
+    }
+
+    const targetMs = targetTime.getTime();
+
+    for (const period of periods) {
+      const start = new Date(period.startTime).getTime();
+      const end = new Date(period.endTime).getTime();
+
+      if (targetMs >= start && targetMs < end) {
+        return period;
+      }
+    }
+
+    return null;
+  },
+
+  /**
    * Get values for a specific day from a weather.gov time series
    * @param {Object} series - The time series data (e.g., props.windSpeed)
    * @param {Date} baseDate - The base date (usually now)
@@ -668,6 +791,7 @@ module.exports = NodeHelper.create({
   },
 
   // Build daily forecast using /forecast periods for high/low temps
+  // eslint-disable-next-line complexity, max-lines-per-function
   buildDailyForecast (props, forecastData, sunData, uvData, units, timezone) {
     const daily = [];
     const now = new Date();
@@ -711,8 +835,12 @@ module.exports = NodeHelper.create({
       // Get aggregates from gridpoints data
       const agg = this.calculateDailyAggregates(props, now, i, tz);
 
-      // Get weather condition for noon of this day
-      const condition = this.getWeatherAtTime(props, date);
+      // Get weather condition from forecast period (prefer day, fallback to night)
+      const forecastPeriod = dayPeriod || nightPeriod;
+      const weatherCondition = forecastPeriod
+        ? this.parseShortForecast(forecastPeriod.shortForecast, forecastPeriod.isDaytime)
+        : this.mapWeatherCondition(null, null, null, null); // Default to clear
+
       const timestamp = Math.floor(date.getTime() / 1000);
 
       // Adjust sunrise/sunset by day offset (86400 seconds per day)
@@ -748,7 +876,7 @@ module.exports = NodeHelper.create({
         pop: agg.maxPop / 100, // OpenWeather uses 0-1
         rain: agg.totalRain,
         snow: agg.totalSnow,
-        weather: [this.mapWeatherCondition(condition, timestamp, adjustedSunrise, adjustedSunset)],
+        weather: [weatherCondition],
         uvi: i === 0
           ? todayMaxUv
           : 0 // EPA data only available for current day
@@ -759,7 +887,7 @@ module.exports = NodeHelper.create({
   },
 
   // Build hourly forecast from weather.gov data
-  buildHourlyForecast (props, sunData, units) {
+  buildHourlyForecast (props, hourlyPeriods, sunData, units) {
     const hourly = [];
     const now = new Date();
 
@@ -802,8 +930,8 @@ module.exports = NodeHelper.create({
       const pressure = getValueAtHour(props.pressure, hourTime);
       const windDir = getValueAtHour(props.windDirection, hourTime);
 
-      // Get weather condition for this hour
-      const condition = this.getWeatherAtTime(props, hourTime);
+      // Get weather condition from hourly forecast periods
+      const hourlyPeriod = this.findHourlyPeriod(hourlyPeriods, hourTime);
       const timestamp = Math.floor(hourTime.getTime() / 1000);
 
       // For day/night calculation on future days, adjust sunrise/sunset by day offset
@@ -815,6 +943,11 @@ module.exports = NodeHelper.create({
         ? sunset + dayOffset * 86400
         : null;
 
+      // Use hourly forecast period for weather condition, fallback to gridpoints data
+      const weatherCondition = hourlyPeriod
+        ? this.parseShortForecast(hourlyPeriod.shortForecast, hourlyPeriod.isDaytime)
+        : this.mapWeatherCondition(this.getWeatherAtTime(props, hourTime), timestamp, adjustedSunrise, adjustedSunset);
+
       hourly.push({
         dt: timestamp,
         temp: this.convertTemp(temp, units),
@@ -825,7 +958,7 @@ module.exports = NodeHelper.create({
         wind_gust: this.convertSpeed(gust, units),
         wind_deg: windDir || 0,
         pop: (pop || 0) / 100,
-        weather: [this.mapWeatherCondition(condition, timestamp, adjustedSunrise, adjustedSunset)]
+        weather: [weatherCondition]
       });
     }
 
