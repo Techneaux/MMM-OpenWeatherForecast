@@ -598,35 +598,57 @@ Module.register("MMM-OpenWeatherForecast", {
    * @returns {string} - MagicMirror weatherType (Weather Icons class name)
    */
   mapWeatherType (owMain, iconCode) {
+    // Map icon codes to Weather Icons class names (matching default MagicMirror format)
+    const iconMapping = {
+      "01d": "day-sunny",
+      "02d": "day-cloudy",
+      "03d": "cloudy",
+      "04d": "cloudy-windy",
+      "09d": "showers",
+      "10d": "rain",
+      "11d": "thunderstorm",
+      "13d": "snow",
+      "50d": "fog",
+      "01n": "night-clear",
+      "02n": "night-cloudy",
+      "03n": "night-cloudy",
+      "04n": "night-cloudy",
+      "09n": "night-showers",
+      "10n": "night-rain",
+      "11n": "night-thunderstorm",
+      "13n": "night-snow",
+      "50n": "night-alt-cloudy-windy"
+    };
+
+    // First try icon code mapping (most accurate)
+    if (iconCode && iconMapping[iconCode]) {
+      return iconMapping[iconCode];
+    }
+
+    // Fallback to main condition (for backward compatibility)
     const isNight = iconCode?.endsWith("n");
-    const mapping = {
+    const fallbackMapping = {
       Clear: isNight
         ? "night-clear"
         : "day-sunny",
       Clouds: isNight
-        ? "night-alt-cloudy"
+        ? "night-cloudy"
         : "day-cloudy",
       Rain: isNight
-        ? "night-alt-rain"
-        : "day-rain",
+        ? "night-rain"
+        : "rain",
       Drizzle: isNight
-        ? "night-alt-showers"
-        : "day-showers",
+        ? "night-showers"
+        : "showers",
       Thunderstorm: isNight
-        ? "night-alt-thunderstorm"
-        : "day-thunderstorm",
+        ? "night-thunderstorm"
+        : "thunderstorm",
       Snow: isNight
-        ? "night-alt-snow"
-        : "day-snow",
-      Mist: isNight
-        ? "night-fog"
-        : "day-fog",
-      Fog: isNight
-        ? "night-fog"
-        : "day-fog",
-      Haze: isNight
-        ? "night-fog"
-        : "day-fog",
+        ? "night-snow"
+        : "snow",
+      Mist: "fog",
+      Fog: "fog",
+      Haze: "fog",
       Smoke: "smoke",
       Dust: "dust",
       Sand: "sandstorm",
@@ -634,7 +656,8 @@ Module.register("MMM-OpenWeatherForecast", {
       Squall: "strong-wind",
       Tornado: "tornado"
     };
-    return mapping[owMain] || (isNight
+
+    return fallbackMapping[owMain] || (isNight
       ? "night-clear"
       : "day-sunny");
   },
