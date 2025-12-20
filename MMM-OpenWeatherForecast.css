@@ -40,14 +40,28 @@
 
   /* Current Conditions */
 
+  .current-conditions-wrapper .current-conditions-inner {
+    display: flex;
+    align-items: center;
+  }
+
+  .current-conditions-wrapper .current-temps {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
   .current-conditions-wrapper .current.temperature {
-    line-height: 80px;
-    vertical-align: middle;
+    font-size: 36px;
+    line-height: 1.2;
+  }
+
+  .current-conditions-wrapper .feels-like {
+    font-size: 18px;
+    line-height: 1.2;
   }
 
   .current-conditions-wrapper .icon {
-    vertical-align: middle;
-    line-height: 80px;
     margin-right: 20px;
     width: 100px;
     height: 100px;
