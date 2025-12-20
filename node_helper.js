@@ -360,7 +360,7 @@ module.exports = NodeHelper.create({
   },
 
   // Transform free provider data to OpenWeather format
-  // eslint-disable-next-line max-params
+  // eslint-disable-next-line max-params, max-lines-per-function
   transformFreeDataToOpenWeatherFormat (gridData, forecastData, hourlyForecastData, sunData, uvData, alertsData, units, latitude, longitude) {
     const props = gridData.properties;
     const now = new Date();
@@ -401,8 +401,11 @@ module.exports = NodeHelper.create({
 
     // Get current weather condition from hourly forecast (first period)
     const currentHourlyPeriod = hourlyPeriods[0];
-    const currentWeatherCondition = currentHourlyPeriod
-      ? [this.parseShortForecast(currentHourlyPeriod.shortForecast, currentHourlyPeriod.isDaytime)]
+    const parsedCurrentCondition = currentHourlyPeriod
+      ? this.parseShortForecast(currentHourlyPeriod.shortForecast, currentHourlyPeriod.isDaytime)
+      : null;
+    const currentWeatherCondition = parsedCurrentCondition
+      ? [parsedCurrentCondition]
       : this.getWeatherCondition(props, sunData);
 
     // Build current conditions
@@ -837,9 +840,10 @@ module.exports = NodeHelper.create({
 
       // Get weather condition from forecast period (prefer day, fallback to night)
       const forecastPeriod = dayPeriod || nightPeriod;
-      const weatherCondition = forecastPeriod
+      const parsedDailyCondition = forecastPeriod
         ? this.parseShortForecast(forecastPeriod.shortForecast, forecastPeriod.isDaytime)
-        : this.mapWeatherCondition(null, null, null, null); // Default to clear
+        : null;
+      const weatherCondition = parsedDailyCondition || this.mapWeatherCondition(null, null, null, null);
 
       const timestamp = Math.floor(date.getTime() / 1000);
 
@@ -944,9 +948,11 @@ module.exports = NodeHelper.create({
         : null;
 
       // Use hourly forecast period for weather condition, fallback to gridpoints data
-      const weatherCondition = hourlyPeriod
+      const parsedHourlyCondition = hourlyPeriod
         ? this.parseShortForecast(hourlyPeriod.shortForecast, hourlyPeriod.isDaytime)
-        : this.mapWeatherCondition(this.getWeatherAtTime(props, hourTime), timestamp, adjustedSunrise, adjustedSunset);
+        : null;
+      const weatherCondition = parsedHourlyCondition ||
+        this.mapWeatherCondition(this.getWeatherAtTime(props, hourTime), timestamp, adjustedSunrise, adjustedSunset);
 
       hourly.push({
         dt: timestamp,
