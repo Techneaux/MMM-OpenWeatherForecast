@@ -1,6 +1,5 @@
 /* eslint-disable camelcase */
-/* eslint-disable max-lines-per-function */
-/* eslint-disable max-lines */
+
 /**
  ********************************
  *
@@ -21,8 +20,6 @@
 const Log = require("logger");
 const NodeHelper = require("node_helper");
 const moment = require("moment");
-const path = require("path");
-const fs = require("fs");
 
 module.exports = NodeHelper.create({
 
@@ -54,187 +51,6 @@ module.exports = NodeHelper.create({
     }
     // metric and standard both use m/s
     return kmh * 0.277778;
-  },
-
-  // Cache file path for daily forecast values
-  getCacheFilePath () {
-    return path.join(__dirname, ".cache", "forecast-cache.json");
-  },
-
-  // Read cache from file
-  async readCache () {
-    const cacheFile = this.getCacheFilePath();
-    try {
-      const data = await fs.promises.readFile(cacheFile, "utf8");
-      return JSON.parse(data);
-    } catch (error) {
-      // File doesn't exist or is corrupt - return empty cache
-      const isFileMissing = error.code === "ENOENT";
-      const isJsonParseError = error instanceof SyntaxError;
-      if (!isFileMissing && !isJsonParseError) {
-        Log.warn(`[MMM-OpenWeatherForecast] Error reading cache: ${error.message}`);
-      }
-    }
-    // Return empty cache structure
-    return {version: 1, location: "", days: {}};
-  },
-
-  // Write cache to file with 7-day limit
-  async writeCache (cacheData) {
-    const cacheFile = this.getCacheFilePath();
-    const cacheDir = path.dirname(cacheFile);
-
-    try {
-      // Ensure .cache directory exists
-      await fs.promises.mkdir(cacheDir, {recursive: true});
-
-      // Prune old entries (keep only 7 days)
-      const prunedData = this.pruneCache(cacheData);
-
-      await fs.promises.writeFile(cacheFile, JSON.stringify(prunedData, null, 2));
-    } catch (error) {
-      Log.warn(`[MMM-OpenWeatherForecast] Error writing cache: ${error.message}`);
-    }
-  },
-
-  // Prune cache to keep only last 7 days
-  pruneCache (cacheData) {
-    const days = cacheData.days || {};
-    const now = new Date();
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const cutoffDate = moment(sevenDaysAgo).format("YYYY-MM-DD");
-
-    const prunedDays = {};
-    // YYYY-MM-DD format is lexicographically sortable, so string comparison works for date ordering
-    for (const [dateKey, values] of Object.entries(days)) {
-      if (dateKey >= cutoffDate) {
-        prunedDays[dateKey] = values;
-      }
-    }
-
-    return {...cacheData, days: prunedDays};
-  },
-
-  // Merge daily forecast with cached values
-  // eslint-disable-next-line max-params
-  mergeDailyWithCache (daily, cacheData, latitude, longitude) {
-    const locationKey = `${parseFloat(latitude).toFixed(2)},${parseFloat(longitude).toFixed(2)}`;
-
-    // Clear cache if location changed significantly
-    let cache = cacheData;
-    if (cache.location && cache.location !== locationKey) {
-      Log.info("[MMM-OpenWeatherForecast] Location changed, clearing forecast cache");
-      cache = {version: 1, location: locationKey, days: {}};
-    }
-    cache.location = locationKey;
-
-    const mergedDaily = daily.map((day, dayIndex) => {
-      // Get date key in local timezone (YYYY-MM-DD format)
-      const dateKey = moment(day.dt * 1000).format("YYYY-MM-DD");
-      const cached = cache.days[dateKey] || {};
-
-      /*
-       * Day 0 (today): Use max/min merge to preserve earlier forecasts when API period shrinks
-       * Future days: Use current API values to honor forecast revisions (cache as fallback only)
-       */
-      const isToday = dayIndex === 0;
-      const merged = this.mergeValuesForDay(day, cached, isToday);
-
-      // Update cache entry (cache values for potential fallback use)
-      cache.days[dateKey] = {
-        maxTemp: merged.temp.max,
-        minTemp: merged.temp.min,
-        maxWind: merged.wind,
-        maxGust: merged.gust,
-        maxPop: merged.pop,
-        maxRain: merged.rain,
-        maxSnow: merged.snow,
-        maxUvi: merged.uvi,
-        lastUpdated: Math.floor(Date.now() / 1000)
-      };
-
-      // Return merged day object
-      return {
-        ...day,
-        temp: merged.temp,
-        wind_speed: merged.wind,
-        wind_gust: merged.gust,
-        pop: merged.pop,
-        rain: merged.rain,
-        snow: merged.snow,
-        uvi: merged.uvi
-      };
-    });
-
-    return [mergedDaily, cache];
-  },
-
-  /*
-   * Helper: merge values for a single day based on whether it's today or a future day
-   * Today: Use max/min merge to preserve earlier forecasts when API period shrinks
-   * Future: Use current API values, cache as fallback only when null (honors forecast revisions)
-   */
-  mergeValuesForDay (day, cached, isToday) {
-    return {
-      temp: this.mergeTempForDay(day.temp, cached, isToday),
-      wind: isToday
-        ? this.mergeMax(cached.maxWind, day.wind_speed)
-        : day.wind_speed ?? cached.maxWind,
-      gust: isToday
-        ? this.mergeMax(cached.maxGust, day.wind_gust)
-        : day.wind_gust ?? cached.maxGust,
-      pop: isToday
-        ? this.mergeMax(cached.maxPop, day.pop)
-        : day.pop ?? cached.maxPop,
-      rain: isToday
-        ? this.mergeMax(cached.maxRain, day.rain)
-        : day.rain ?? cached.maxRain,
-      snow: isToday
-        ? this.mergeMax(cached.maxSnow, day.snow)
-        : day.snow ?? cached.maxSnow,
-      uvi: isToday
-        ? this.mergeMax(cached.maxUvi, day.uvi)
-        : day.uvi ?? cached.maxUvi
-    };
-  },
-
-  // Helper: merge temperature values for a day
-  mergeTempForDay (temp, cached, isToday) {
-    return {
-      day: temp?.day,
-      min: isToday
-        ? this.mergeMin(cached.minTemp, temp?.min)
-        : temp?.min ?? cached.minTemp,
-      max: isToday
-        ? this.mergeMax(cached.maxTemp, temp?.max)
-        : temp?.max ?? cached.maxTemp,
-      night: temp?.night,
-      eve: temp?.eve,
-      morn: temp?.morn
-    };
-  },
-
-  // Helper: merge by keeping max value (handles null, undefined, NaN)
-  mergeMax (cached, current) {
-    if (cached === null || typeof cached === "undefined" || Number.isNaN(cached)) {
-      return current;
-    }
-    if (current === null || typeof current === "undefined" || Number.isNaN(current)) {
-      return cached;
-    }
-    return Math.max(cached, current);
-  },
-
-  // Helper: merge by keeping min value (handles null, undefined, NaN)
-  mergeMin (cached, current) {
-    if (cached === null || typeof cached === "undefined" || Number.isNaN(cached)) {
-      return current;
-    }
-    if (current === null || typeof current === "undefined" || Number.isNaN(current)) {
-      return cached;
-    }
-    return Math.min(cached, current);
   },
 
   async socketNotificationReceived (notification, payload) {
@@ -299,9 +115,17 @@ module.exports = NodeHelper.create({
     try {
       Log.info("[MMM-OpenWeatherForecast] Fetching from free providers (weather.gov, sunrise-sunset.org, EPA)");
 
-      // Fetch all data in parallel
-      const [gridData, sunData, uvData, alertsData] = await Promise.all([
-        this.fetchWeatherGovData(latitude, longitude),
+      // First: fetch gridData (this caches grid coordinates needed for forecast)
+      const gridData = await this.fetchWeatherGovData(latitude, longitude);
+
+      if (!gridData) {
+        Log.error("[MMM-OpenWeatherForecast] Failed to fetch weather.gov data");
+        return;
+      }
+
+      // Now fetch forecast and other data in parallel (grid info is cached)
+      const [forecastData, sunData, uvData, alertsData] = await Promise.all([
+        this.fetchWeatherGovForecast(latitude, longitude, units),
         this.fetchSunriseSunsetData(latitude, longitude),
         zipcode
           ? this.fetchEpaUvData(zipcode)
@@ -309,19 +133,8 @@ module.exports = NodeHelper.create({
         this.fetchWeatherGovAlerts(latitude, longitude)
       ]);
 
-      if (!gridData) {
-        Log.error("[MMM-OpenWeatherForecast] Failed to fetch weather.gov data");
-        return;
-      }
-
       // Transform to OpenWeather format
-      const data = this.transformFreeDataToOpenWeatherFormat(gridData, sunData, uvData, alertsData, units, latitude, longitude);
-
-      // Merge daily forecast with cached values for full-day max/min
-      const cache = await this.readCache();
-      const [mergedDaily, updatedCache] = this.mergeDailyWithCache(data.daily, cache, latitude, longitude);
-      data.daily = mergedDaily;
-      await this.writeCache(updatedCache);
+      const data = this.transformFreeDataToOpenWeatherFormat(gridData, forecastData, sunData, uvData, alertsData, units, latitude, longitude);
 
       data.instanceId = instanceId;
       this.sendSocketNotification("OPENWEATHER_FORECAST_DATA", data);
@@ -439,11 +252,59 @@ module.exports = NodeHelper.create({
     }
   },
 
+  // Fetch weather.gov forecast (12-hour periods with high/low temps)
+  async fetchWeatherGovForecast (latitude, longitude, units) {
+    const cacheKey = `${latitude},${longitude}`;
+    const gridInfo = this.gridPointCache[cacheKey];
+
+    if (!gridInfo) {
+      Log.warn("[MMM-OpenWeatherForecast] Grid info not cached, cannot fetch forecast");
+      return null;
+    }
+
+    // weather.gov supports "us" and "si"; both "metric" and "standard" map to "si"
+    const unitsParam = units === "imperial"
+      ? "us"
+      : "si";
+    const url = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}/forecast?units=${unitsParam}`;
+
+    try {
+      const response = await fetch(url, {
+        headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
+      });
+
+      if (response.status !== 200) {
+        Log.error(`[MMM-OpenWeatherForecast] weather.gov forecast API error: ${response.status}`);
+        return null;
+      }
+
+      return await response.json();
+    } catch (error) {
+      Log.error(`[MMM-OpenWeatherForecast] weather.gov forecast fetch error: ${error}`);
+      return null;
+    }
+  },
+
+  /**
+   * Get current hour in a specific timezone
+   * @param {string} timezone - IANA timezone (e.g., "America/Chicago")
+   * @returns {number} Current hour (0-23) in that timezone
+   */
+  getLocalHour (timezone) {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hour12: false
+    });
+    return parseInt(formatter.format(new Date()), 10);
+  },
+
   // Transform free provider data to OpenWeather format
   // eslint-disable-next-line max-params
-  transformFreeDataToOpenWeatherFormat (gridData, sunData, uvData, alertsData, units, latitude, longitude) {
+  transformFreeDataToOpenWeatherFormat (gridData, forecastData, sunData, uvData, alertsData, units, latitude, longitude) {
     const props = gridData.properties;
     const now = new Date();
+    const timezone = props.timeZone || "America/Chicago";
 
     // Helper to get current value from a weather.gov time series
     const getCurrentValue = (series) => {
@@ -500,8 +361,8 @@ module.exports = NodeHelper.create({
       weather: this.getWeatherCondition(props, sunData)
     };
 
-    // Build daily forecast
-    const daily = this.buildDailyForecast(props, sunData, uvData, units);
+    // Build daily forecast using forecast periods for high/low temps
+    const daily = this.buildDailyForecast(props, forecastData, sunData, uvData, units, timezone);
 
     // Build hourly forecast
     const hourly = this.buildHourlyForecast(props, sunData, units);
@@ -586,7 +447,7 @@ module.exports = NodeHelper.create({
   },
 
   // Map weather.gov condition to OpenWeather format
-  // eslint-disable-next-line complexity, max-params
+  // eslint-disable-next-line complexity
   mapWeatherCondition (condition, timestamp = null, sunrise = null, sunset = null) {
     // Determine day/night based on sunrise/sunset if available
     const checkTime = timestamp
@@ -648,11 +509,124 @@ module.exports = NodeHelper.create({
     return {id: 800, main: "Clear", description: "clear sky", icon: `01${dayNight}`};
   },
 
-  // Build daily forecast from weather.gov data
-  // eslint-disable-next-line max-params
-  buildDailyForecast (props, sunData, uvData, units) {
+  /**
+   * Get values for a specific day from a weather.gov time series
+   * @param {Object} series - The time series data (e.g., props.windSpeed)
+   * @param {Date} baseDate - The base date (usually now)
+   * @param {number} dayOffset - Days from baseDate (0 = today)
+   * @param {boolean} useOverlap - If true, include periods that overlap with target day
+   * @returns {Array} Array of values for that day
+   */
+  getValuesForDay (series, baseDate, dayOffset, useOverlap = false) {
+    if (!series || !series.values) {
+      return [];
+    }
+    const targetDate = new Date(baseDate);
+    targetDate.setDate(targetDate.getDate() + dayOffset);
+
+    if (useOverlap) {
+      // Include periods that overlap with target day at all
+      const dayStart = new Date(targetDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayStartMs = dayStart.getTime();
+      const dayEndMs = dayStartMs + 86400000; // 24 hours in ms
+
+      return series.values.filter((item) => {
+        const [start, duration] = this.parseValidTime(item.validTime);
+        const startMs = start.getTime();
+        const endMs = startMs + duration;
+        return startMs < dayEndMs && endMs > dayStartMs;
+      }).map((item) => item.value);
+    }
+
+    // Match target day against weather.gov timestamps (both in local time)
+    const targetDay = moment(targetDate).format("YYYY-MM-DD");
+    return series.values.filter((item) => {
+      const [start] = this.parseValidTime(item.validTime);
+      return moment(start).format("YYYY-MM-DD") === targetDay;
+    }).map((item) => item.value);
+  },
+
+  /**
+   * Extract day/night period temperatures from forecast data
+   * @param {Array} periods - Forecast periods from /forecast API
+   * @param {number} periodIdx - Current index in periods array
+   * @param {number} dayIndex - Which forecast day (0 = today)
+   * @param {boolean} isCurrentlyDaytime - Whether it's currently daytime
+   * @returns {Object} { dayPeriod, nightPeriod, newPeriodIdx }
+   */
+  extractForecastPeriods (periods, periodIdx, dayIndex, isCurrentlyDaytime) {
+    let dayPeriod = null;
+    let nightPeriod = null;
+    let idx = periodIdx;
+
+    if (dayIndex === 0 && !isCurrentlyDaytime) {
+      // It's currently nighttime - first period is "Tonight", no day period
+      if (idx < periods.length && !periods[idx].isDaytime) {
+        nightPeriod = periods[idx];
+        idx++;
+      }
+    } else {
+      // Day period
+      if (idx < periods.length && periods[idx].isDaytime) {
+        dayPeriod = periods[idx];
+        idx++;
+      }
+      // Night period
+      if (idx < periods.length && !periods[idx].isDaytime) {
+        nightPeriod = periods[idx];
+        idx++;
+      }
+    }
+
+    return {dayPeriod, nightPeriod, newPeriodIdx: idx};
+  },
+
+  /**
+   * Calculate daily aggregates (wind, precip, etc.) from gridpoints data
+   * @param {Object} props - Gridpoints properties
+   * @param {Date} baseDate - Base date for calculations
+   * @param {number} dayOffset - Days from baseDate
+   * @returns {Object} Aggregated values for the day
+   */
+  calculateDailyAggregates (props, baseDate, dayOffset) {
+    const validWindSpeeds = this.getValuesForDay(props.windSpeed, baseDate, dayOffset, true).filter((v) => v !== null);
+    const validWindGusts = this.getValuesForDay(props.windGust, baseDate, dayOffset, true).filter((v) => v !== null);
+    const validPops = this.getValuesForDay(props.probabilityOfPrecipitation, baseDate, dayOffset, true).filter((v) => v !== null);
+    const rain = this.getValuesForDay(props.quantitativePrecipitation, baseDate, dayOffset, true);
+    const snow = this.getValuesForDay(props.snowfallAmount, baseDate, dayOffset, true);
+    const humidityValues = this.getValuesForDay(props.relativeHumidity, baseDate, dayOffset, true).filter((v) => v !== null);
+
+    return {
+      maxWind: validWindSpeeds.length > 0
+        ? Math.max(...validWindSpeeds)
+        : null,
+      maxGust: validWindGusts.length > 0
+        ? Math.max(...validWindGusts)
+        : null,
+      maxPop: validPops.length > 0
+        ? Math.max(...validPops)
+        : 0,
+      totalRain: rain.length > 0
+        ? rain.reduce((a, b) => (a || 0) + (b || 0), 0)
+        : 0,
+      totalSnow: snow.length > 0
+        ? snow.reduce((a, b) => (a || 0) + (b || 0), 0)
+        : 0,
+      avgHumidity: humidityValues.length > 0
+        ? humidityValues.reduce((sum, v) => sum + v, 0) / humidityValues.length
+        : 50,
+      windDeg: this.getValuesForDay(props.windDirection, baseDate, dayOffset)[0] || 0
+    };
+  },
+
+  // Build daily forecast using /forecast periods for high/low temps
+  buildDailyForecast (props, forecastData, sunData, uvData, units, timezone) {
     const daily = [];
     const now = new Date();
+    const tz = timezone || props.timeZone || "America/Chicago";
+    const currentHour = this.getLocalHour(tz);
+    const isCurrentlyDaytime = currentHour >= 6 && currentHour < 18;
 
     // Get base sunrise/sunset timestamps (we'll adjust by day offset)
     const baseSunrise = sunData
@@ -667,42 +641,9 @@ module.exports = NodeHelper.create({
       ? Math.max(...uvData.map((item) => item.UV_VALUE || 0))
       : 0;
 
-    /*
-     * Get values for a specific day from a time series
-     * useOverlap: if true, include periods that overlap with target day at all
-     *             if false, only include periods that start on target day
-     */
-    const getValuesForDay = (series, dayOffset, useOverlap = false) => {
-      if (!series || !series.values) {
-        return [];
-      }
-      const targetDate = new Date(now);
-      targetDate.setDate(targetDate.getDate() + dayOffset);
-
-      if (useOverlap) {
-        // Include periods that overlap with target day at all
-        const dayStart = new Date(targetDate);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayStartMs = dayStart.getTime();
-        const dayEndMs = dayStartMs + 86400000; // 24 hours in ms
-
-        return series.values.filter((item) => {
-          const [start, duration] = this.parseValidTime(item.validTime);
-          const startMs = start.getTime();
-          const endMs = startMs + duration;
-          return startMs < dayEndMs && endMs > dayStartMs;
-        }).map((item) => item.value);
-      }
-
-      // Match local target day against UTC date from weather.gov timestamps
-      const targetDay = moment(targetDate).format("YYYY-MM-DD");
-      return series.values.filter((item) => {
-        const [start] = this.parseValidTime(item.validTime);
-        return moment(start)
-          .utc()
-          .format("YYYY-MM-DD") === targetDay;
-      }).map((item) => item.value);
-    };
+    // Get forecast periods (already in correct units from API)
+    const periods = forecastData?.properties?.periods || [];
+    let periodIdx = 0;
 
     // Build 7 days of forecast
     for (let i = 0; i < 7; i++) {
@@ -710,44 +651,16 @@ module.exports = NodeHelper.create({
       date.setDate(date.getDate() + i);
       date.setHours(12, 0, 0, 0); // Noon for daily icon
 
-      /*
-       * Filter nulls first, then check length to avoid Math.max/min on empty arrays
-       * Temperature: maxTemp uses same day, minTemp uses next day (meteorological standard: "tonight's low")
-       */
-      const validMaxTemps = getValuesForDay(props.maxTemperature, i).filter((v) => v !== null);
-      let validMinTemps = getValuesForDay(props.minTemperature, i + 1).filter((v) => v !== null);
-      if (validMinTemps.length === 0) {
-        // Fallback for last day when i+1 has no data
-        validMinTemps = getValuesForDay(props.minTemperature, i).filter((v) => v !== null);
-      }
-      // Precip/Wind/POP: use overlap logic to include evening periods in "today"
-      const validWindSpeeds = getValuesForDay(props.windSpeed, i, true).filter((v) => v !== null);
-      const validWindGusts = getValuesForDay(props.windGust, i, true).filter((v) => v !== null);
-      const validPops = getValuesForDay(props.probabilityOfPrecipitation, i, true).filter((v) => v !== null);
-      const rain = getValuesForDay(props.quantitativePrecipitation, i, true);
-      const snow = getValuesForDay(props.snowfallAmount, i, true);
+      // Extract day/night periods for temps
+      const {dayPeriod, nightPeriod, newPeriodIdx} = this.extractForecastPeriods(periods, periodIdx, i, isCurrentlyDaytime);
+      periodIdx = newPeriodIdx;
 
-      const maxTemp = validMaxTemps.length > 0
-        ? Math.max(...validMaxTemps)
-        : null;
-      const minTemp = validMinTemps.length > 0
-        ? Math.min(...validMinTemps)
-        : null;
-      const maxWind = validWindSpeeds.length > 0
-        ? Math.max(...validWindSpeeds)
-        : null;
-      const maxGust = validWindGusts.length > 0
-        ? Math.max(...validWindGusts)
-        : null;
-      const maxPop = validPops.length > 0
-        ? Math.max(...validPops)
-        : 0;
-      const totalRain = rain.length > 0
-        ? rain.reduce((a, b) => (a || 0) + (b || 0), 0)
-        : 0;
-      const totalSnow = snow.length > 0
-        ? snow.reduce((a, b) => (a || 0) + (b || 0), 0)
-        : 0;
+      // Temps already in target units from /forecast?units=us|si
+      const highTemp = dayPeriod?.temperature ?? null;
+      const lowTemp = nightPeriod?.temperature ?? null;
+
+      // Get aggregates from gridpoints data
+      const agg = this.calculateDailyAggregates(props, now, i);
 
       // Get weather condition for noon of this day
       const condition = this.getWeatherAtTime(props, date);
@@ -766,32 +679,26 @@ module.exports = NodeHelper.create({
         sunrise: adjustedSunrise,
         sunset: adjustedSunset,
         temp: {
-          day: this.convertTemp(maxTemp, units),
-          min: this.convertTemp(minTemp, units),
-          max: this.convertTemp(maxTemp, units),
-          night: this.convertTemp(minTemp, units),
-          eve: this.convertTemp(maxTemp, units),
-          morn: this.convertTemp(minTemp, units)
+          day: highTemp,
+          min: lowTemp,
+          max: highTemp,
+          night: lowTemp,
+          eve: highTemp,
+          morn: lowTemp
         },
         feels_like: {
-          day: this.convertTemp(maxTemp, units),
-          night: this.convertTemp(minTemp, units),
-          eve: this.convertTemp(maxTemp, units),
-          morn: this.convertTemp(minTemp, units)
+          day: highTemp,
+          night: lowTemp,
+          eve: highTemp,
+          morn: lowTemp
         },
-        humidity: (() => {
-          const humidityValues = getValuesForDay(props.relativeHumidity, i, true).filter((v) => v !== null);
-          if (humidityValues.length === 0) {
-            return 50;
-          }
-          return humidityValues.reduce((sum, v) => sum + v, 0) / humidityValues.length;
-        })(),
-        wind_speed: this.convertSpeed(maxWind, units),
-        wind_gust: this.convertSpeed(maxGust, units),
-        wind_deg: getValuesForDay(props.windDirection, i)[0] || 0,
-        pop: maxPop / 100, // OpenWeather uses 0-1
-        rain: totalRain,
-        snow: totalSnow,
+        humidity: agg.avgHumidity,
+        wind_speed: this.convertSpeed(agg.maxWind, units),
+        wind_gust: this.convertSpeed(agg.maxGust, units),
+        wind_deg: agg.windDeg,
+        pop: agg.maxPop / 100, // OpenWeather uses 0-1
+        rain: agg.totalRain,
+        snow: agg.totalSnow,
         weather: [this.mapWeatherCondition(condition, timestamp, adjustedSunrise, adjustedSunset)],
         uvi: i === 0
           ? todayMaxUv

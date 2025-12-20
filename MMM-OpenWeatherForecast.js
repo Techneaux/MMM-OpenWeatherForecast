@@ -1,4 +1,4 @@
-/* eslint-disable camelcase, max-lines */
+/* eslint-disable camelcase */
 /* globals config, moment, Skycons */
 
 /**
@@ -512,13 +512,21 @@ Module.register("MMM-OpenWeatherForecast", {
 
   // Returns a formatted data object for High / Low temperature range
   formatHiLowTemperature (highTemperature, lowTemperature) {
+    // Handle null/undefined/NaN temperatures (e.g., high is null at nighttime when day has passed)
+    const formatTemp = (temp, label) => {
+      if (temp === null || typeof temp === "undefined" || Number.isNaN(temp)) {
+        return `${this.config.concise
+          ? ""
+          : `${label} `}--°`;
+      }
+      return `${this.config.concise
+        ? ""
+        : `${label} `}${Math.round(temp)}°`;
+    };
+
     return {
-      high: `${(this.config.concise
-        ? ""
-        : `${this.config.label_high} `) + Math.round(highTemperature)}°`,
-      low: `${(this.config.concise
-        ? ""
-        : `${this.config.label_low} `) + Math.round(lowTemperature)}°`
+      high: formatTemp(highTemperature, this.config.label_high),
+      low: formatTemp(lowTemperature, this.config.label_low)
     };
   },
 
