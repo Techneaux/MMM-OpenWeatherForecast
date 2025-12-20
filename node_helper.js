@@ -232,6 +232,36 @@ module.exports = NodeHelper.create({
     }
   },
 
+  /**
+   * Extract hour (0-23) from EPA UV data item
+   * EPA DATE_TIME format: "DEC/20/2025 03 AM" or similar
+   * Note: EPA UV times are in local time for the zipcode location
+   * @param {Object} item - EPA UV data item
+   * @returns {number} Hour in 24-hour format (0-23)
+   */
+  getUvHour (item) {
+    if (item.DATE_TIME) {
+      const match = item.DATE_TIME.match(/(?<hour>\d{1,2})\s*(?<period>AM|PM)/iu);
+      if (match) {
+        let hour = parseInt(match.groups.hour, 10);
+        const isPM = match.groups.period.toUpperCase() === "PM";
+        if (isPM && hour !== 12) {
+          hour += 12;
+        }
+        if (!isPM && hour === 12) {
+          hour = 0;
+        }
+        return hour;
+      }
+    }
+
+    /*
+     * Fallback: assume ORDER 1 = 3 AM, so hour = ORDER + 2
+     * This covers 3 AM to 11 PM (typical UV forecast range)
+     */
+    return (item.ORDER || 0) + 2;
+  },
+
   // Fetch weather.gov alerts
   async fetchWeatherGovAlerts (latitude, longitude) {
     try {
@@ -330,7 +360,7 @@ module.exports = NodeHelper.create({
       }
       const currentHour = now.getHours();
       for (const item of uvData) {
-        if (item.ORDER === currentHour || item.HOUR === currentHour) {
+        if (this.getUvHour(item) === currentHour) {
           return item.UV_VALUE || 0;
         }
       }
@@ -653,10 +683,10 @@ module.exports = NodeHelper.create({
       ? Math.floor(new Date(sunData.sunset).getTime() / 1000)
       : null;
 
-    // Calculate max UV for remaining hours today from EPA data (only available for current day)
+    // Calculate max UV for current and remaining hours today from EPA data (only available for current day)
     const todayMaxUv = uvData && uvData.length > 0
       ? Math.max(...uvData
-        .filter((item) => (item.ORDER ?? item.HOUR) >= currentHour)
+        .filter((item) => this.getUvHour(item) >= currentHour)
         .map((item) => item.UV_VALUE || 0), 0)
       : 0;
 
