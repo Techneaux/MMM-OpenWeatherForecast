@@ -139,7 +139,7 @@ Module.register("MMM-OpenWeatherForecast", {
   },
 
   getStyles () {
-    return ["MMM-OpenWeatherForecast.css"];
+    return ["MMM-OpenWeatherForecast.css", "weather-icons.css"];
   },
 
   getTemplate () {
