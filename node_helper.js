@@ -19,7 +19,7 @@
 
 const Log = require("logger");
 const NodeHelper = require("node_helper");
-const moment = require("moment");
+const moment = require("moment-timezone");
 
 module.exports = NodeHelper.create({
 
@@ -515,9 +515,11 @@ module.exports = NodeHelper.create({
    * @param {Date} baseDate - The base date (usually now)
    * @param {number} dayOffset - Days from baseDate (0 = today)
    * @param {boolean} useOverlap - If true, include periods that overlap with target day
+   * @param {boolean} futureOnly - If true, only include periods that haven't ended yet (for day 0)
+   * @param {string} timezone - IANA timezone name for calculating day boundaries
    * @returns {Array} Array of values for that day
    */
-  getValuesForDay (series, baseDate, dayOffset, useOverlap = false) {
+  getValuesForDay (series, baseDate, dayOffset, useOverlap = false, futureOnly = false, timezone = null) {
     if (!series || !series.values) {
       return [];
     }
@@ -525,17 +527,27 @@ module.exports = NodeHelper.create({
     targetDate.setDate(targetDate.getDate() + dayOffset);
 
     if (useOverlap) {
-      // Include periods that overlap with target day at all
-      const dayStart = new Date(targetDate);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayStartMs = dayStart.getTime();
+      // Calculate day boundaries in location's timezone
+      const tz = timezone || "America/Chicago";
+      const dayStart = moment(targetDate).tz(tz)
+        .startOf("day");
+      const dayStartMs = dayStart.valueOf();
       const dayEndMs = dayStartMs + 86400000; // 24 hours in ms
+      const nowMs = Date.now();
 
       return series.values.filter((item) => {
         const [start, duration] = this.parseValidTime(item.validTime);
         const startMs = start.getTime();
         const endMs = startMs + duration;
-        return startMs < dayEndMs && endMs > dayStartMs;
+
+        // Must overlap with target day
+        const overlapsDay = startMs < dayEndMs && endMs > dayStartMs;
+
+        // If futureOnly, period must not have ended yet
+        if (futureOnly && dayOffset === 0) {
+          return overlapsDay && endMs > nowMs;
+        }
+        return overlapsDay;
       }).map((item) => item.value);
     }
 
@@ -587,15 +599,20 @@ module.exports = NodeHelper.create({
    * @param {Object} props - Gridpoints properties
    * @param {Date} baseDate - Base date for calculations
    * @param {number} dayOffset - Days from baseDate
+   * @param {string} timezone - IANA timezone name for calculating day boundaries
    * @returns {Object} Aggregated values for the day
    */
-  calculateDailyAggregates (props, baseDate, dayOffset) {
-    const validWindSpeeds = this.getValuesForDay(props.windSpeed, baseDate, dayOffset, true).filter((v) => v !== null);
-    const validWindGusts = this.getValuesForDay(props.windGust, baseDate, dayOffset, true).filter((v) => v !== null);
-    const validPops = this.getValuesForDay(props.probabilityOfPrecipitation, baseDate, dayOffset, true).filter((v) => v !== null);
-    const rain = this.getValuesForDay(props.quantitativePrecipitation, baseDate, dayOffset, true);
-    const snow = this.getValuesForDay(props.snowfallAmount, baseDate, dayOffset, true);
-    const humidityValues = this.getValuesForDay(props.relativeHumidity, baseDate, dayOffset, true).filter((v) => v !== null);
+  calculateDailyAggregates (props, baseDate, dayOffset, timezone) {
+    const tz = timezone || props.timeZone || "America/Chicago";
+    // For today (dayOffset 0), only include current and future periods
+    const futureOnly = dayOffset === 0;
+
+    const validWindSpeeds = this.getValuesForDay(props.windSpeed, baseDate, dayOffset, true, futureOnly, tz).filter((v) => v !== null);
+    const validWindGusts = this.getValuesForDay(props.windGust, baseDate, dayOffset, true, futureOnly, tz).filter((v) => v !== null);
+    const validPops = this.getValuesForDay(props.probabilityOfPrecipitation, baseDate, dayOffset, true, futureOnly, tz).filter((v) => v !== null);
+    const rain = this.getValuesForDay(props.quantitativePrecipitation, baseDate, dayOffset, true, futureOnly, tz);
+    const snow = this.getValuesForDay(props.snowfallAmount, baseDate, dayOffset, true, futureOnly, tz);
+    const humidityValues = this.getValuesForDay(props.relativeHumidity, baseDate, dayOffset, true, futureOnly, tz).filter((v) => v !== null);
 
     return {
       maxWind: validWindSpeeds.length > 0
@@ -636,9 +653,11 @@ module.exports = NodeHelper.create({
       ? Math.floor(new Date(sunData.sunset).getTime() / 1000)
       : null;
 
-    // Calculate max UV for today from EPA data (only available for current day)
+    // Calculate max UV for remaining hours today from EPA data (only available for current day)
     const todayMaxUv = uvData && uvData.length > 0
-      ? Math.max(...uvData.map((item) => item.UV_VALUE || 0))
+      ? Math.max(...uvData
+        .filter((item) => (item.ORDER ?? item.HOUR) >= currentHour)
+        .map((item) => item.UV_VALUE || 0), 0)
       : 0;
 
     // Get forecast periods (already in correct units from API)
@@ -660,7 +679,7 @@ module.exports = NodeHelper.create({
       const lowTemp = nightPeriod?.temperature ?? null;
 
       // Get aggregates from gridpoints data
-      const agg = this.calculateDailyAggregates(props, now, i);
+      const agg = this.calculateDailyAggregates(props, now, i, tz);
 
       // Get weather condition for noon of this day
       const condition = this.getWeatherAtTime(props, date);
