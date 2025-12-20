@@ -131,8 +131,12 @@ Find out your latitude and longitude here:
       <td>If you're using animated icons and they are not appearing, it might be timing issue, especially if you're using a slower system like a Raspberry Pi.  Add a delay before the call to start the animation is made, in milliseconds<br><br><strong>Type</strong> <code>Number</code><br>Defaults to <code>1000</code></td>
     </tr>
     <tr>
-      <td><code>showFeelsLikeTemp</code></td>
-      <td>Makes the temperature display for current conditions and hourly forecast show the "feels like" temperature instead of the actual temperature.<br><br><strong>Type</strong> <code>Boolean</code><br>Defaults to <code>false</code></td>
+      <td><code>showFeelsLike</code></td>
+      <td>Shows a "Feels like" temperature line below the current temperature when the feels-like differs from actual by at least <code>feelsLikeThreshold</code> degrees.<br><br><strong>Type</strong> <code>Boolean</code><br>Defaults to <code>true</code></td>
+    </tr>
+    <tr>
+      <td><code>feelsLikeThreshold</code></td>
+      <td>Minimum temperature difference (in degrees) between actual and feels-like before displaying the feels-like line.<br><br><strong>Type</strong> <code>Number</code><br>Defaults to <code>5</code></td>
     </tr>
     <tr>
       <td><code>showCurrentConditions</code></td>
@@ -187,7 +191,7 @@ Find out your latitude and longitude here:
     </tr>
     <tr>
       <td><code>hourlyExtras</code></td>
-      <td>Hourly forecast items will always show the temperature (either actual or "feels like" depending on your setting for <code>showFeelsLikeTemp</code>).  You can configure additional items to be shown. See the "Extras" section below for details on how to specify this.<br><br><strong>Type</strong> <code>Object</code><br>Defaults to Precipitation and Wind.</td>
+      <td>Hourly forecast items will always show the temperature. You can configure additional items to be shown. See the "Extras" section below for details on how to specify this.<br><br><strong>Type</strong> <code>Object</code><br>Defaults to Precipitation and Wind.</td>
     </tr>
     <tr>
       <td><code>showDailyForecast</code></td>
@@ -325,7 +329,7 @@ This shows just Hi/Low temp display and precipitation:
       colored: true,
       concise: true,
       requestDelay: "2000",
-      showFeelsLikeTemp: true,
+      showFeelsLike: true,
       showCurrentConditions: true,
       showSummary: true,
       showExtraCurrentConditions: true,

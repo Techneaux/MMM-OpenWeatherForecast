@@ -9,14 +9,19 @@
     {# -------------- Current Conditions -------------- #}
     {% if config.showCurrentConditions %}
       <div class="current-conditions-wrapper">
-        <span class="current-conditions-wrapper">
+        <div class="current-conditions-inner">
           {% if forecast.currently.animatedIconId %}
             <canvas class="current icon current" id="{{ forecast.currently.animatedIconId }}" width="{{ animatedIconSizes.main }}" height="{{ animatedIconSizes.main }}"></canvas>
           {% else %}
             <img class="current icon current" src="{{ forecast.currently.iconPath }}" />
           {% endif %}
-          <span class="current temperature bright large light">{{ forecast.currently.temperature }}</span>
-        </span>
+          <div class="current-temps">
+            <div class="current temperature bright">{{ forecast.currently.temperature }}</div>
+            {% if forecast.currently.showFeelsLikeLine %}
+              <div class="feels-like light">Feels like {{ forecast.currently.feelsLike }}</div>
+            {% endif %}
+          </div>
+        </div>
       </div>
     {% endif %}
 

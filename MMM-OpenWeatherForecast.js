@@ -67,7 +67,8 @@ Module.register("MMM-OpenWeatherForecast", {
     mainIconSize: 100,
     forecastIconSize: 70,
     updateFadeSpeed: 500,
-    showFeelsLikeTemp: false,
+    showFeelsLike: true,
+    feelsLikeThreshold: 5,
     showSummary: true,
 
     showCurrentConditions: true,
@@ -372,11 +373,16 @@ Module.register("MMM-OpenWeatherForecast", {
 
     const accumulation = this.calculateTodayPrecipitation();
 
+    const actualTemp = this.weatherData.current.temp;
+    const feelsLikeTemp = this.weatherData.current.feels_like ?? actualTemp;
+    const tempDifference = Math.abs(actualTemp - feelsLikeTemp);
+    const showFeelsLikeLine = this.config.showFeelsLike && tempDifference >= this.config.feelsLikeThreshold;
+
     return {
       currently: {
-        temperature: this.config.showFeelsLikeTemp
-          ? `${Math.round(this.weatherData.current.feels_like)}°`
-          : `${Math.round(this.weatherData.current.temp)}°`,
+        temperature: `${Math.round(actualTemp)}°`,
+        feelsLike: `${Math.round(feelsLikeTemp)}°`,
+        showFeelsLikeLine,
         animatedIconId: this.config.useAnimatedIcons
           ? this.addIcon(this.iconMap[this.weatherData.current.weather[0].icon], true)
           : null,
@@ -423,9 +429,7 @@ Module.register("MMM-OpenWeatherForecast", {
 
     // --------- Temperature ---------
 
-    if (type === "hourly" && this.config.showFeelsLikeTemp) { // just display projected temperature for that hour
-      fItem.temperature = `${Math.round(fData.feels_like)}°`;
-    } else if (type === "hourly" && !this.config.showFeelsLikeTemp) {
+    if (type === "hourly") {
       fItem.temperature = `${Math.round(fData.temp)}°`;
     } else { // display High / Low temperatures
       fItem.tempRange = this.formatHiLowTemperature(fData.temp.max, fData.temp.min);
