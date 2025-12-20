@@ -52,13 +52,14 @@
   }
 
   .current-conditions-wrapper .current.temperature {
-    font-size: 36px;
+    font-size: 42px;
     line-height: 1.2;
   }
 
   .current-conditions-wrapper .feels-like {
-    font-size: 18px;
+    font-size: 22px;
     line-height: 1.2;
+    font-weight: bold;
   }
 
   .current-conditions-wrapper .icon {
