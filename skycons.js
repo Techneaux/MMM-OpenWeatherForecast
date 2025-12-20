@@ -9,7 +9,7 @@
 /* eslint-disable no-underscore-dangle */
 /* eslint-disable no-param-reassign */
 /* eslint-disable no-invalid-this */
-/* eslint-disable max-lines */
+
 (function (global) {
   /*
    * Set up a RequestAnimationFrame shim so we can animate efficiently FOR

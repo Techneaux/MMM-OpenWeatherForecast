@@ -262,6 +262,7 @@ module.exports = NodeHelper.create({
       return null;
     }
 
+    // weather.gov supports "us" and "si"; both "metric" and "standard" map to "si"
     const unitsParam = units === "imperial"
       ? "us"
       : "si";
@@ -538,13 +539,11 @@ module.exports = NodeHelper.create({
       }).map((item) => item.value);
     }
 
-    // Match local target day against UTC date from weather.gov timestamps
+    // Match target day against weather.gov timestamps (both in local time)
     const targetDay = moment(targetDate).format("YYYY-MM-DD");
     return series.values.filter((item) => {
       const [start] = this.parseValidTime(item.validTime);
-      return moment(start)
-        .utc()
-        .format("YYYY-MM-DD") === targetDay;
+      return moment(start).format("YYYY-MM-DD") === targetDay;
     }).map((item) => item.value);
   },
 
@@ -622,7 +621,6 @@ module.exports = NodeHelper.create({
   },
 
   // Build daily forecast using /forecast periods for high/low temps
-
   buildDailyForecast (props, forecastData, sunData, uvData, units, timezone) {
     const daily = [];
     const now = new Date();

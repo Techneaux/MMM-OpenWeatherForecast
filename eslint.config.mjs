@@ -31,7 +31,7 @@ export default defineConfig([
       "capitalized-comments": "off",
       "consistent-this": ["error", "self"],
       "id-length": "off",
-      "max-lines": ["error", 900],
+      "max-lines": ["error", 1000],
       "max-lines-per-function": ["error", {max: 70, skipBlankLines: true, skipComments: true}],
       "max-params": ["error", 6],
       "max-statements": ["error", 50],
