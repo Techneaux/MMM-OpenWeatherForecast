@@ -18,31 +18,27 @@ export default defineConfig([
         Module: "readonly"
       }
     },
-    plugins: {js, stylistic},
-    extends: ["js/all", "stylistic/all"],
+    plugins: {
+      js,
+      "@stylistic": stylistic
+    },
+    extends: ["js/recommended"],
     rules: {
+      // Stylistic rules for consistent formatting
       "@stylistic/array-element-newline": ["error", "consistent"],
+      "@stylistic/comma-dangle": ["error", "never"],
       "@stylistic/dot-location": ["error", "property"],
       "@stylistic/function-call-argument-newline": ["error", "consistent"],
       "@stylistic/indent": ["error", 2],
       "@stylistic/object-property-newline": ["error", {allowAllPropertiesOnSameLine: true}],
       "@stylistic/padded-blocks": ["error", "never"],
       "@stylistic/quote-props": ["error", "as-needed"],
-      "capitalized-comments": "off",
+      "@stylistic/quotes": ["error", "double"],
+      "@stylistic/semi": ["error", "always"],
+      "@stylistic/space-before-function-paren": ["error", "always"],
+      // Code quality
       "consistent-this": ["error", "self"],
-      "id-length": "off",
-      "max-lines": ["error", 1000],
-      "max-lines-per-function": ["error", {max: 70, skipBlankLines: true, skipComments: true}],
-      "max-params": ["error", 6],
-      "max-statements": ["error", 50],
-      "no-inline-comments": "off",
-      "no-magic-numbers": "off",
-      "no-nested-ternary": "off",
-      "no-plusplus": "off",
-      "no-ternary": "off",
-      "one-var": ["error", "never"],
-      "prefer-destructuring": "off",
-      "sort-keys": "off"
+      "one-var": ["error", "never"]
     }
   },
   {files: ["**/*.md"], plugins: {markdown}, language: "markdown/gfm", extends: ["markdown/recommended"]}
