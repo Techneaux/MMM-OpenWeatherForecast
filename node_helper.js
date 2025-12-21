@@ -301,7 +301,10 @@ module.exports = NodeHelper.create({
 
     try {
       const response = await fetch(url, {
-        headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
+        headers: {
+          "User-Agent": "MMM-OpenWeatherForecast MagicMirror Module",
+          "Cache-Control": "no-cache"
+        }
       });
 
       if (response.status !== 200) {
@@ -330,7 +333,10 @@ module.exports = NodeHelper.create({
 
     try {
       const response = await fetch(url, {
-        headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
+        headers: {
+          "User-Agent": "MMM-OpenWeatherForecast MagicMirror Module",
+          "Cache-Control": "no-cache"
+        }
       });
 
       if (response.status !== 200) {
