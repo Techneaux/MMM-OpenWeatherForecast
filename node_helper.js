@@ -297,14 +297,14 @@ module.exports = NodeHelper.create({
     const unitsParam = units === "imperial"
       ? "us"
       : "si";
-    const cacheBuster = Date.now();
-    const url = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}/forecast?units=${unitsParam}&_=${cacheBuster}`;
+    const url = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}/forecast?units=${unitsParam}`;
 
     try {
       const response = await fetch(url, {
         headers: {
           "User-Agent": "MMM-OpenWeatherForecast MagicMirror Module",
-          "Cache-Control": "no-cache"
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
         }
       });
 
@@ -336,7 +336,8 @@ module.exports = NodeHelper.create({
       const response = await fetch(url, {
         headers: {
           "User-Agent": "MMM-OpenWeatherForecast MagicMirror Module",
-          "Cache-Control": "no-cache"
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
         }
       });
 
