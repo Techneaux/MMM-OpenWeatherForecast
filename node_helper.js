@@ -724,32 +724,23 @@ module.exports = NodeHelper.create({
    * Extract day/night period temperatures from forecast data
    * @param {Array} periods - Forecast periods from /forecast API
    * @param {number} periodIdx - Current index in periods array
-   * @param {number} dayIndex - Which forecast day (0 = today)
-   * @param {boolean} isCurrentlyDaytime - Whether it's currently daytime
    * @returns {Object} { dayPeriod, nightPeriod, newPeriodIdx }
    */
-  extractForecastPeriods (periods, periodIdx, dayIndex, isCurrentlyDaytime) {
+  extractForecastPeriods (periods, periodIdx) {
     let dayPeriod = null;
     let nightPeriod = null;
     let idx = periodIdx;
 
-    if (dayIndex === 0 && !isCurrentlyDaytime) {
-      // It's currently nighttime - first period is "Tonight", no day period
-      if (idx < periods.length && !periods[idx].isDaytime) {
-        nightPeriod = periods[idx];
-        idx++;
-      }
-    } else {
-      // Day period
-      if (idx < periods.length && periods[idx].isDaytime) {
-        dayPeriod = periods[idx];
-        idx++;
-      }
-      // Night period
-      if (idx < periods.length && !periods[idx].isDaytime) {
-        nightPeriod = periods[idx];
-        idx++;
-      }
+    // Check for day period (if available)
+    if (idx < periods.length && periods[idx].isDaytime) {
+      dayPeriod = periods[idx];
+      idx++;
+    }
+
+    // Check for night period (if available)
+    if (idx < periods.length && !periods[idx].isDaytime) {
+      nightPeriod = periods[idx];
+      idx++;
     }
 
     return {dayPeriod, nightPeriod, newPeriodIdx: idx};
@@ -805,7 +796,6 @@ module.exports = NodeHelper.create({
     const now = new Date();
     const tz = timezone || props.timeZone || "America/Chicago";
     const currentHour = this.getLocalHour(tz);
-    const isCurrentlyDaytime = currentHour >= 6 && currentHour < 18;
 
     // Get base sunrise/sunset timestamps (we'll adjust by day offset)
     const baseSunrise = sunData
@@ -833,7 +823,7 @@ module.exports = NodeHelper.create({
       date.setHours(12, 0, 0, 0); // Noon for daily icon
 
       // Extract day/night periods for temps
-      const {dayPeriod, nightPeriod, newPeriodIdx} = this.extractForecastPeriods(periods, periodIdx, i, isCurrentlyDaytime);
+      const {dayPeriod, nightPeriod, newPeriodIdx} = this.extractForecastPeriods(periods, periodIdx);
       periodIdx = newPeriodIdx;
 
       // Temps already in target units from /forecast?units=us|si
