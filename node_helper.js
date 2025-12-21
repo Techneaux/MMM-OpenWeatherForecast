@@ -297,7 +297,8 @@ module.exports = NodeHelper.create({
     const unitsParam = units === "imperial"
       ? "us"
       : "si";
-    const url = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}/forecast?units=${unitsParam}`;
+    const cacheBuster = Date.now();
+    const url = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}/forecast?units=${unitsParam}&_=${cacheBuster}`;
 
     try {
       const response = await fetch(url, {
