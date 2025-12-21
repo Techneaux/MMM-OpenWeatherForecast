@@ -301,11 +301,8 @@ module.exports = NodeHelper.create({
 
     try {
       const response = await fetch(url, {
-        headers: {
-          "User-Agent": "MMM-OpenWeatherForecast MagicMirror Module",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache"
-        }
+        cache: "no-store",
+        headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
       });
 
       if (response.status !== 200) {
@@ -334,11 +331,8 @@ module.exports = NodeHelper.create({
 
     try {
       const response = await fetch(url, {
-        headers: {
-          "User-Agent": "MMM-OpenWeatherForecast MagicMirror Module",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache"
-        }
+        cache: "no-store",
+        headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
       });
 
       if (response.status !== 200) {
@@ -824,9 +818,6 @@ module.exports = NodeHelper.create({
     const periods = forecastData?.properties?.periods || [];
     let periodIdx = 0;
 
-    // DEBUG: Log first 3 periods
-    Log.info(`[MMM-OpenWeatherForecast] DEBUG: First 3 periods: ${JSON.stringify(periods.slice(0, 3).map(p => ({name: p.name, isDaytime: p.isDaytime, temp: p.temperature})))}`);
-
     // Build 7 days of forecast
     for (let i = 0; i < 7; i++) {
       const date = new Date(now);
@@ -840,11 +831,6 @@ module.exports = NodeHelper.create({
       // Temps already in target units from /forecast?units=us|si
       const highTemp = dayPeriod?.temperature ?? null;
       const lowTemp = nightPeriod?.temperature ?? null;
-
-      // DEBUG: Log day 0 extraction
-      if (i === 0) {
-        Log.info(`[MMM-OpenWeatherForecast] DEBUG Day 0: dayPeriod=${dayPeriod?.name || 'null'}, nightPeriod=${nightPeriod?.name || 'null'}, highTemp=${highTemp}, lowTemp=${lowTemp}`);
-      }
 
       // Get aggregates from gridpoints data
       const agg = this.calculateDailyAggregates(props, now, i, tz);
