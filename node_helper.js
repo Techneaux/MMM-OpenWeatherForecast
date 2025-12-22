@@ -649,69 +649,134 @@ module.exports = NodeHelper.create({
   },
 
   /**
-   * Parse shortForecast text from /forecast API into weather condition object
+   * Parse probability qualifier from forecast text
+   * @param {string} text - Lowercase forecast text
+   * @returns {Object} { qualifier: string, probability: number, cleanText: string }
+   */
+  parseProbability (text) {
+    if (text.includes("slight chance")) {
+      return {qualifier: "slight_chance", probability: 0.2, cleanText: text.replace(/slight chance/gu, "").trim()};
+    }
+    if (text.includes("likely")) {
+      return {qualifier: "likely", probability: 0.7, cleanText: text.replace(/likely/gu, "").trim()};
+    }
+    if (text.includes("chance")) {
+      return {qualifier: "chance", probability: 0.4, cleanText: text.replace(/chance/gu, "").trim()};
+    }
+    return {qualifier: "categorical", probability: 1.0, cleanText: text};
+  },
+
+  /**
+   * Get weather condition with severity score from forecast text
+   * @param {string} text - Lowercase forecast text (with probability removed)
+   * @param {boolean} isDaytime - Whether it's daytime
+   * @returns {Object} { type, severity, icon, id, main }
+   */
+  getWeatherConditionFromText (text, isDaytime) {
+    const dayNight = isDaytime
+      ? "d"
+      : "n";
+
+    // Precipitation (high severity)
+    if (text.includes("thunder") || text.includes("storm")) {
+      return {type: "thunderstorm", severity: 100, icon: `11${dayNight}`, id: 200, main: "Thunderstorm"};
+    }
+    if (text.includes("freezing") || text.includes("ice") || text.includes("sleet")) {
+      return {type: "freezing", severity: 90, icon: `13${dayNight}`, id: 611, main: "Sleet"};
+    }
+    if (text.includes("snow") || text.includes("blizzard") || text.includes("flurries")) {
+      return {type: "snow", severity: 80, icon: `13${dayNight}`, id: 600, main: "Snow"};
+    }
+    if (text.includes("rain") || text.includes("showers") || text.includes("drizzle")) {
+      return {type: "rain", severity: 70, icon: `10${dayNight}`, id: 500, main: "Rain"};
+    }
+
+    // Atmospheric (medium severity)
+    if (text.includes("fog") || text.includes("mist") || text.includes("haze") || text.includes("smoke")) {
+      return {type: "fog", severity: 40, icon: `50${dayNight}`, id: 741, main: "Fog"};
+    }
+
+    // Wind conditions
+    if (text.includes("wind") || text.includes("breezy") || text.includes("blustery")) {
+      return {type: "wind", severity: 30, icon: `50${dayNight}`, id: 771, main: "Wind"};
+    }
+
+    // Cloud cover (low severity) - check more specific phrases first
+    if (text.includes("partly cloudy") || text.includes("partly sunny")) {
+      return {type: "partly_cloudy", severity: 15, icon: `02${dayNight}`, id: 801, main: "Clouds"};
+    }
+    if (text.includes("mostly cloudy") || text.includes("cloudy") || text.includes("overcast")) {
+      return {type: "cloudy", severity: 20, icon: `04${dayNight}`, id: 804, main: "Clouds"};
+    }
+
+    // Clear (lowest severity) - "mostly sunny/clear" now maps to clear
+    if (text.includes("sunny") || text.includes("clear")) {
+      return {type: "clear", severity: 10, icon: `01${dayNight}`, id: 800, main: "Clear"};
+    }
+
+    // Default to clear
+    return {type: "clear", severity: 10, icon: `01${dayNight}`, id: 800, main: "Clear"};
+  },
+
+  /**
+   * Parse shortForecast text from /forecast API into weather condition object.
+   * Handles compound forecasts like "Chance Rain then Mostly Sunny" by scoring
+   * each part and returning the highest-scoring condition.
    * @param {string} shortForecast - Text like "Sunny", "Mostly Cloudy", "Chance Light Snow"
    * @param {boolean} isDaytime - Whether it's daytime (from forecast period)
    * @returns {Object} Weather condition object matching OpenWeather format
    */
-   
   parseShortForecast (shortForecast, isDaytime) {
     if (!shortForecast) {
       return null;
     }
 
-    const text = shortForecast.toLowerCase();
     const dayNight = isDaytime
       ? "d"
       : "n";
 
-    // Check for precipitation types first (most specific)
-    if (text.includes("thunder") || text.includes("storm")) {
-      return {id: 200, main: "Thunderstorm", description: shortForecast.toLowerCase(), icon: `11${dayNight}`};
-    }
-    if (text.includes("snow") || text.includes("blizzard") || text.includes("flurries")) {
-      return {id: 600, main: "Snow", description: shortForecast.toLowerCase(), icon: `13${dayNight}`};
-    }
-    if (text.includes("sleet") || text.includes("freezing") || text.includes("ice")) {
-      return {id: 611, main: "Sleet", description: shortForecast.toLowerCase(), icon: `13${dayNight}`};
-    }
-    if (text.includes("rain") || text.includes("showers") || text.includes("drizzle")) {
-      return {id: 500, main: "Rain", description: shortForecast.toLowerCase(), icon: `10${dayNight}`};
-    }
+    // Split on " then " to handle compound forecasts
+    const parts = shortForecast.toLowerCase().split(" then ");
 
-    // Atmospheric conditions
-    if (text.includes("fog") || text.includes("mist") || text.includes("haze") || text.includes("smoke")) {
-      return {id: 741, main: "Fog", description: shortForecast.toLowerCase(), icon: `50${dayNight}`};
-    }
+    let bestCondition = null;
+    let bestScore = -1;
 
-    // Cloud cover
-    if (text.includes("overcast") || text.includes("cloudy")) {
-      if (text.includes("partly") || text.includes("mostly clear") || text.includes("mostly sunny")) {
-        return {id: 801, main: "Clouds", description: shortForecast.toLowerCase(), icon: `02${dayNight}`};
+    for (const part of parts) {
+      // Parse probability qualifier
+      const {qualifier, probability, cleanText} = this.parseProbability(part);
+
+      // Get weather condition with severity
+      const condition = this.getWeatherConditionFromText(cleanText, isDaytime);
+
+      // Calculate score: severity * probability
+      let score = condition.severity * probability;
+
+      // Special rule: "Slight Chance" precipitation (severity >= 70) gets downgraded to partly cloudy
+      let finalCondition = condition;
+      if (qualifier === "slight_chance" && condition.severity >= 70) {
+        finalCondition = {
+          type: "partly_cloudy",
+          severity: 15,
+          icon: `02${dayNight}`,
+          id: 801,
+          main: "Clouds"
+        };
+        score = 15;
       }
-      if (text.includes("mostly cloudy")) {
-        return {id: 803, main: "Clouds", description: shortForecast.toLowerCase(), icon: `04${dayNight}`};
+
+      // Track best condition (first one wins ties via > not >=)
+      if (score > bestScore) {
+        bestScore = score;
+        bestCondition = {
+          id: finalCondition.id,
+          main: finalCondition.main,
+          description: shortForecast.toLowerCase(),
+          icon: finalCondition.icon
+        };
       }
-      return {id: 804, main: "Clouds", description: shortForecast.toLowerCase(), icon: `04${dayNight}`};
     }
 
-    // Partially clear conditions (sunny/clear side phrasing)
-    if (text.includes("partly sunny") || text.includes("mostly sunny") || text.includes("mostly clear")) {
-      return {id: 801, main: "Clouds", description: shortForecast.toLowerCase(), icon: `02${dayNight}`};
-    }
-
-    // Clear conditions
-    if (text.includes("sunny") || text.includes("clear")) {
-      return {id: 800, main: "Clear", description: shortForecast.toLowerCase(), icon: `01${dayNight}`};
-    }
-
-    // Wind
-    if (text.includes("wind") || text.includes("breezy") || text.includes("blustery")) {
-      return {id: 771, main: "Wind", description: shortForecast.toLowerCase(), icon: `50${dayNight}`};
-    }
-
-    // Default to clear if no match
-    return {id: 800, main: "Clear", description: shortForecast.toLowerCase(), icon: `01${dayNight}`};
+    return bestCondition;
   },
 
   /**
