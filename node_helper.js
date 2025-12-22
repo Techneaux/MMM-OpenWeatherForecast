@@ -752,14 +752,21 @@ module.exports = NodeHelper.create({
 
   /**
    * Parse shortForecast text from /forecast API into weather condition object.
-   * Handles compound forecasts like "Chance Rain then Mostly Sunny" by scoring
-   * each part and returning the highest-scoring condition.
+   * Handles compound forecasts like "Chance Rain then Mostly Sunny" by:
+   * 1. Splitting on " then " to get individual conditions
+   * 2. Extracting probability qualifiers (slight chance=20%, chance=40%, likely=70%)
+   * 3. Scoring each condition as: severity × probability
+   * 4. Returning the highest-scoring condition
+   *
+   * Special rule: Low probability (20%) precipitation is downgraded to "Partly Cloudy"
+   * to avoid showing rain/snow icons for unlikely events.
+   *
    * @param {string} shortForecast - Text like "Sunny", "Mostly Cloudy", "Chance Light Snow"
    * @param {boolean} isDaytime - Whether it's daytime (from forecast period)
-   * @returns {Object} Weather condition object matching OpenWeather format
+   * @returns {Object|null} Weather condition object matching OpenWeather format, or null if empty
    */
   parseShortForecast (shortForecast, isDaytime) {
-    if (!shortForecast) {
+    if (!shortForecast || !shortForecast.trim()) {
       return null;
     }
 
