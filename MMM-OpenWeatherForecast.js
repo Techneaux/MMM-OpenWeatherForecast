@@ -134,6 +134,9 @@ Module.register("MMM-OpenWeatherForecast", {
   validUnits: ["standard", "metric", "imperial"],
   validLayouts: ["tiled", "table"],
 
+  // Staleness threshold constant
+  STALE_THRESHOLD_MS: 30 * 60 * 1000, // 30 minutes
+
   getScripts () {
     return ["moment.js", this.file("skycons.js")];
   },
@@ -154,6 +157,13 @@ Module.register("MMM-OpenWeatherForecast", {
    * and daily forecast.
    */
   getTemplateData () {
+    const now = Date.now();
+    const isStale = this.lastSuccessTime &&
+                    (now - this.lastSuccessTime) > this.STALE_THRESHOLD_MS;
+    const lastUpdateMinutesAgo = this.lastSuccessTime
+      ? Math.round((now - this.lastSuccessTime) / 60000)
+      : null;
+
     return {
       phrases: {
         loading: this.translate("LOADING")
@@ -175,8 +185,9 @@ Module.register("MMM-OpenWeatherForecast", {
       animatedIconSizes: {
         main: this.config.mainIconSize,
         forecast: this.config.forecastIconSize
-      }
-
+      },
+      isStale: isStale,
+      lastUpdateMinutesAgo: lastUpdateMinutesAgo
     };
   },
 
@@ -189,6 +200,9 @@ Module.register("MMM-OpenWeatherForecast", {
     this.iconCache = [];
     this.iconIdCounter = 0;
     this.formattedWeatherData = null;
+
+    // Staleness tracking
+    this.lastSuccessTime = null;
 
     /*
      * Optionally, Dark Sky's Skycons animated icon
@@ -295,7 +309,18 @@ Module.register("MMM-OpenWeatherForecast", {
 
   socketNotificationReceived (notification, payload) {
     if (notification === "OPENWEATHER_FORECAST_DATA" && payload.instanceId === this.identifier) {
-      if (typeof payload.current !== "undefined") {
+      if (payload.error) {
+        // Handle error response - just log, backend already retried
+        Log.error(`[MMM-OpenWeatherForecast] ${payload.errorType}: ${payload.errorMessage}`);
+        // Keep showing last good data, staleness indicator will show via template
+        this.updateDom(this.config.updateFadeSpeed);
+      } else if (typeof payload.current !== "undefined") {
+        // Success
+        if (this.lastSuccessTime === null) {
+          Log.info("[MMM-OpenWeatherForecast] Initial data received");
+        }
+        this.lastSuccessTime = Date.now();
+
         // clear animated icon cache
         if (this.config.useAnimatedIcons) {
           this.clearIcons();
