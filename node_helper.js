@@ -649,20 +649,42 @@ module.exports = NodeHelper.create({
   },
 
   /**
-   * Parse probability qualifier from forecast text
+   * Parse probability qualifier from forecast text.
+   * NWS probability terms: https://www.weather.gov/bgm/forecast_terms
    * @param {string} text - Lowercase forecast text
    * @returns {Object} { qualifier: string, probability: number, cleanText: string }
    */
   parseProbability (text) {
+    // Order matters: check more specific phrases before general ones
+
+    // ~20% probability
     if (text.includes("slight chance")) {
       return {qualifier: "slight_chance", probability: 0.2, cleanText: text.replace(/slight chance/gu, "").trim()};
     }
+    if (text.includes("isolated")) {
+      return {qualifier: "isolated", probability: 0.2, cleanText: text.replace(/isolated/gu, "").trim()};
+    }
+    if (text.includes("widely scattered")) {
+      return {qualifier: "widely_scattered", probability: 0.2, cleanText: text.replace(/widely scattered/gu, "").trim()};
+    }
+
+    // ~70% probability (check before "chance" since "likely" is more specific)
     if (text.includes("likely")) {
       return {qualifier: "likely", probability: 0.7, cleanText: text.replace(/likely/gu, "").trim()};
+    }
+    if (text.includes("numerous")) {
+      return {qualifier: "numerous", probability: 0.7, cleanText: text.replace(/numerous/gu, "").trim()};
+    }
+
+    // ~40% probability
+    if (text.includes("scattered")) {
+      return {qualifier: "scattered", probability: 0.4, cleanText: text.replace(/scattered/gu, "").trim()};
     }
     if (text.includes("chance")) {
       return {qualifier: "chance", probability: 0.4, cleanText: text.replace(/chance/gu, "").trim()};
     }
+
+    // 100% probability (categorical)
     return {qualifier: "categorical", probability: 1.0, cleanText: text};
   },
 
@@ -670,52 +692,62 @@ module.exports = NodeHelper.create({
    * Get weather condition with severity score from forecast text
    * @param {string} text - Lowercase forecast text (with probability removed)
    * @param {boolean} isDaytime - Whether it's daytime
-   * @returns {Object} { type, severity, icon, id, main }
+   * @returns {Object} { severity, icon, id, main }
    */
   getWeatherConditionFromText (text, isDaytime) {
     const dayNight = isDaytime
       ? "d"
       : "n";
 
-    // Precipitation (high severity)
-    if (text.includes("thunder") || text.includes("storm")) {
-      return {type: "thunderstorm", severity: 100, icon: `11${dayNight}`, id: 200, main: "Thunderstorm"};
-    }
-    if (text.includes("freezing") || text.includes("ice") || text.includes("sleet")) {
-      return {type: "freezing", severity: 90, icon: `13${dayNight}`, id: 611, main: "Sleet"};
-    }
-    if (text.includes("snow") || text.includes("blizzard") || text.includes("flurries")) {
-      return {type: "snow", severity: 80, icon: `13${dayNight}`, id: 600, main: "Snow"};
-    }
-    if (text.includes("rain") || text.includes("showers") || text.includes("drizzle")) {
-      return {type: "rain", severity: 70, icon: `10${dayNight}`, id: 500, main: "Rain"};
+    // Severe weather (highest severity)
+    if (text.includes("thunder") || text.includes("storm") || text.includes("hail")) {
+      return {severity: 100, icon: `11${dayNight}`, id: 200, main: "Thunderstorm"};
     }
 
-    // Atmospheric (medium severity)
+    // Freezing/mixed precipitation (very high severity)
+    if (text.includes("freezing") || text.includes("ice") || text.includes("sleet") || text.includes("wintry mix")) {
+      return {severity: 90, icon: `13${dayNight}`, id: 611, main: "Sleet"};
+    }
+    if (text.includes("rain") && text.includes("snow")) {
+      // "Rain and Snow" or "Rain/Snow" mix
+      return {severity: 85, icon: `13${dayNight}`, id: 616, main: "Sleet"};
+    }
+
+    // Snow (high severity)
+    if (text.includes("snow") || text.includes("blizzard") || text.includes("flurries") || text.includes("graupel")) {
+      return {severity: 80, icon: `13${dayNight}`, id: 600, main: "Snow"};
+    }
+
+    // Rain (moderate-high severity)
+    if (text.includes("rain") || text.includes("showers") || text.includes("drizzle")) {
+      return {severity: 70, icon: `10${dayNight}`, id: 500, main: "Rain"};
+    }
+
+    // Atmospheric conditions (medium severity)
     if (text.includes("fog") || text.includes("mist") || text.includes("haze") || text.includes("smoke")) {
-      return {type: "fog", severity: 40, icon: `50${dayNight}`, id: 741, main: "Fog"};
+      return {severity: 40, icon: `50${dayNight}`, id: 741, main: "Fog"};
     }
 
     // Wind conditions
     if (text.includes("wind") || text.includes("breezy") || text.includes("blustery")) {
-      return {type: "wind", severity: 30, icon: `50${dayNight}`, id: 771, main: "Wind"};
+      return {severity: 30, icon: `50${dayNight}`, id: 771, main: "Wind"};
     }
 
     // Cloud cover (low severity) - check more specific phrases first
     if (text.includes("partly cloudy") || text.includes("partly sunny")) {
-      return {type: "partly_cloudy", severity: 15, icon: `02${dayNight}`, id: 801, main: "Clouds"};
+      return {severity: 15, icon: `02${dayNight}`, id: 801, main: "Clouds"};
     }
     if (text.includes("mostly cloudy") || text.includes("cloudy") || text.includes("overcast")) {
-      return {type: "cloudy", severity: 20, icon: `04${dayNight}`, id: 804, main: "Clouds"};
+      return {severity: 20, icon: `04${dayNight}`, id: 804, main: "Clouds"};
     }
 
     // Clear (lowest severity) - "mostly sunny/clear" now maps to clear
     if (text.includes("sunny") || text.includes("clear")) {
-      return {type: "clear", severity: 10, icon: `01${dayNight}`, id: 800, main: "Clear"};
+      return {severity: 10, icon: `01${dayNight}`, id: 800, main: "Clear"};
     }
 
     // Default to clear
-    return {type: "clear", severity: 10, icon: `01${dayNight}`, id: 800, main: "Clear"};
+    return {severity: 10, icon: `01${dayNight}`, id: 800, main: "Clear"};
   },
 
   /**
@@ -751,11 +783,11 @@ module.exports = NodeHelper.create({
       // Calculate score: severity * probability
       let score = condition.severity * probability;
 
-      // Special rule: "Slight Chance" precipitation (severity >= 70) gets downgraded to partly cloudy
+      // Special rule: low probability precipitation (20%) gets downgraded to partly cloudy
       let finalCondition = condition;
-      if (qualifier === "slight_chance" && condition.severity >= 70) {
+      const isLowProbability = qualifier === "slight_chance" || qualifier === "isolated" || qualifier === "widely_scattered";
+      if (isLowProbability && condition.severity >= 70) {
         finalCondition = {
-          type: "partly_cloudy",
           severity: 15,
           icon: `02${dayNight}`,
           id: 801,
