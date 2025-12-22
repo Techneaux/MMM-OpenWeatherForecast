@@ -507,8 +507,13 @@
 
 
       </div>
-    {% endif %}      
+    {% endif %}
 
+    {% if isStale %}
+      <div class="stale-indicator dimmed xsmall">
+        Data is {{ lastUpdateMinutesAgo }} min old
+      </div>
+    {% endif %}
 
   {% endif %}
 

@@ -38,6 +38,12 @@
     text-align: right;
   }
 
+  .stale-indicator {
+    color: #ffcc00;
+    margin-top: 5px;
+    text-align: center;
+  }
+
   /* Current Conditions */
 
   .current-conditions-wrapper .current-conditions-inner {

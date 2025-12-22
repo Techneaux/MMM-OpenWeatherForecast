@@ -28,6 +28,49 @@ module.exports = NodeHelper.create({
     this.gridPointCache = {}; // Cache grid coordinates by lat,lon
   },
 
+  // Send error notification to frontend
+  sendError (instanceId, errorType, message) {
+    this.sendSocketNotification("OPENWEATHER_FORECAST_DATA", {
+      instanceId,
+      error: true,
+      errorType, // "config", "network", "api"
+      errorMessage: message
+    });
+  },
+
+  // Delay helper for retry logic
+  delay (ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  },
+
+  // Fetch with retry for transient errors (5xx, network failures)
+  async fetchWithRetry (url, options = {}, maxRetries = 2, delayMs = 15000) {
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+        if (response.ok) {
+          return response;
+        }
+        // Retry on 5xx errors
+        if (response.status >= 500 && attempt < maxRetries) {
+          Log.warn(`[MMM-OpenWeatherForecast] Got ${response.status}, retrying in ${delayMs / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+          await this.delay(delayMs);
+          continue;
+        }
+        return response; // Return 4xx errors without retry
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries) {
+          Log.warn(`[MMM-OpenWeatherForecast] Network error: ${error.message || error}, retrying in ${delayMs / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+          await this.delay(delayMs);
+          continue;
+        }
+      }
+    }
+    throw lastError;
+  },
+
   // Unit conversion helpers
   convertTemp (celsius, targetUnits) {
     if (celsius === null) {
@@ -57,6 +100,7 @@ module.exports = NodeHelper.create({
     if (notification === "OPENWEATHER_FORECAST_GET") {
       if (payload.latitude === null || payload.latitude === "" || payload.longitude === null || payload.longitude === "") {
         Log.error(`[MMM-OpenWeatherForecast] ${moment().format("D-MMM-YY HH:mm")} ** ERROR ** Latitude and/or longitude not provided.`);
+        this.sendError(payload.instanceId, "config", "Latitude and/or longitude not provided");
         return;
       }
 
@@ -74,6 +118,7 @@ module.exports = NodeHelper.create({
   async fetchOpenWeatherData (payload) {
     if (payload.apikey === null || payload.apikey === "") {
       Log.error(`[MMM-OpenWeatherForecast] ${moment().format("D-MMM-YY HH:mm")} ** ERROR ** No API key configured. Get an API key at https://openweathermap.org/`);
+      this.sendError(payload.instanceId, "config", "No API key configured");
       return;
     }
 
@@ -90,10 +135,11 @@ module.exports = NodeHelper.create({
     }
 
     try {
-      const response = await fetch(url);
+      const response = await this.fetchWithRetry(url);
 
-      if (response.status !== 200) {
+      if (!response.ok) {
         Log.error(`[MMM-OpenWeatherForecast] OpenWeather API error: ${response.status} ${response.statusText}`);
+        this.sendError(payload.instanceId, "api", `OpenWeather API error: ${response.status}`);
         return;
       }
 
@@ -105,6 +151,7 @@ module.exports = NodeHelper.create({
       }
     } catch (error) {
       Log.error(`[MMM-OpenWeatherForecast] ${moment().format("D-MMM-YY HH:mm")} ** ERROR ** ${error}\n${error.stack}`);
+      this.sendError(payload.instanceId, "network", error.message || String(error));
     }
   },
 
@@ -120,6 +167,7 @@ module.exports = NodeHelper.create({
 
       if (!gridData) {
         Log.error("[MMM-OpenWeatherForecast] Failed to fetch weather.gov data");
+        this.sendError(instanceId, "api", "Failed to fetch weather.gov data");
         return;
       }
 
@@ -141,6 +189,7 @@ module.exports = NodeHelper.create({
       this.sendSocketNotification("OPENWEATHER_FORECAST_DATA", data);
     } catch (error) {
       Log.error(`[MMM-OpenWeatherForecast] ${moment().format("D-MMM-YY HH:mm")} ** ERROR ** ${error}\n${error.stack}`);
+      this.sendError(instanceId, "network", error.message || String(error));
     }
   },
 
@@ -154,11 +203,12 @@ module.exports = NodeHelper.create({
       let gridInfo = this.gridPointCache[cacheKey];
       if (!gridInfo) {
         const pointsUrl = `https://api.weather.gov/points/${latitude},${longitude}`;
-        const pointsResponse = await fetch(pointsUrl, {
+        const pointsResponse = await this.fetchWithRetry(pointsUrl, {
+          cache: "no-store",
           headers: {"User-Agent": userAgent}
         });
 
-        if (pointsResponse.status !== 200) {
+        if (!pointsResponse.ok) {
           Log.error(`[MMM-OpenWeatherForecast] weather.gov points API error: ${pointsResponse.status}`);
           return null;
         }
@@ -175,11 +225,12 @@ module.exports = NodeHelper.create({
 
       // Fetch raw gridpoint data
       const gridUrl = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}`;
-      const gridResponse = await fetch(gridUrl, {
+      const gridResponse = await this.fetchWithRetry(gridUrl, {
+        cache: "no-store",
         headers: {"User-Agent": userAgent}
       });
 
-      if (gridResponse.status !== 200) {
+      if (!gridResponse.ok) {
         Log.error(`[MMM-OpenWeatherForecast] weather.gov gridpoints API error: ${gridResponse.status}`);
         return null;
       }
@@ -195,9 +246,9 @@ module.exports = NodeHelper.create({
   async fetchSunriseSunsetData (latitude, longitude) {
     try {
       const url = `https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&formatted=0`;
-      const response = await fetch(url);
+      const response = await this.fetchWithRetry(url);
 
-      if (response.status !== 200) {
+      if (!response.ok) {
         Log.error(`[MMM-OpenWeatherForecast] sunrise-sunset.org API error: ${response.status}`);
         return null;
       }
@@ -216,9 +267,9 @@ module.exports = NodeHelper.create({
   async fetchEpaUvData (zipcode) {
     try {
       const url = `https://data.epa.gov/efservice/getEnvirofactsUVHOURLY/ZIP/${zipcode}/JSON`;
-      const response = await fetch(url);
+      const response = await this.fetchWithRetry(url);
 
-      if (response.status !== 200) {
+      if (!response.ok) {
         Log.error(`[MMM-OpenWeatherForecast] EPA UV API error: ${response.status}`);
         return null;
       }
@@ -267,11 +318,12 @@ module.exports = NodeHelper.create({
   async fetchWeatherGovAlerts (latitude, longitude) {
     try {
       const url = `https://api.weather.gov/alerts/active?point=${latitude},${longitude}`;
-      const response = await fetch(url, {
+      const response = await this.fetchWithRetry(url, {
+        cache: "no-store",
         headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
       });
 
-      if (response.status !== 200) {
+      if (!response.ok) {
         Log.error(`[MMM-OpenWeatherForecast] weather.gov alerts API error: ${response.status}`);
         return null;
       }
@@ -300,12 +352,12 @@ module.exports = NodeHelper.create({
     const url = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}/forecast?units=${unitsParam}`;
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchWithRetry(url, {
         cache: "no-store",
         headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
       });
 
-      if (response.status !== 200) {
+      if (!response.ok) {
         Log.error(`[MMM-OpenWeatherForecast] weather.gov forecast API error: ${response.status}`);
         return null;
       }
@@ -330,12 +382,12 @@ module.exports = NodeHelper.create({
     const url = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}/forecast/hourly`;
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchWithRetry(url, {
         cache: "no-store",
         headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
       });
 
-      if (response.status !== 200) {
+      if (!response.ok) {
         Log.error(`[MMM-OpenWeatherForecast] weather.gov hourly forecast API error: ${response.status}`);
         return null;
       }
