@@ -205,7 +205,10 @@ module.exports = NodeHelper.create({
         const pointsUrl = `https://api.weather.gov/points/${latitude},${longitude}`;
         const pointsResponse = await this.fetchWithRetry(pointsUrl, {
           cache: "no-store",
-          headers: {"User-Agent": userAgent}
+          headers: {
+            "User-Agent": userAgent,
+            Accept: `application/geo+json;v=${Date.now()}`
+          }
         });
 
         if (!pointsResponse.ok) {
@@ -227,7 +230,10 @@ module.exports = NodeHelper.create({
       const gridUrl = `https://api.weather.gov/gridpoints/${gridInfo.office}/${gridInfo.gridX},${gridInfo.gridY}`;
       const gridResponse = await this.fetchWithRetry(gridUrl, {
         cache: "no-store",
-        headers: {"User-Agent": userAgent}
+        headers: {
+          "User-Agent": userAgent,
+          Accept: `application/geo+json;v=${Date.now()}`
+        }
       });
 
       if (!gridResponse.ok) {
@@ -320,7 +326,10 @@ module.exports = NodeHelper.create({
       const url = `https://api.weather.gov/alerts/active?point=${latitude},${longitude}`;
       const response = await this.fetchWithRetry(url, {
         cache: "no-store",
-        headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
+        headers: {
+          "User-Agent": "MMM-OpenWeatherForecast MagicMirror Module",
+          Accept: `application/geo+json;v=${Date.now()}`
+        }
       });
 
       if (!response.ok) {
@@ -354,7 +363,10 @@ module.exports = NodeHelper.create({
     try {
       const response = await this.fetchWithRetry(url, {
         cache: "no-store",
-        headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
+        headers: {
+          "User-Agent": "MMM-OpenWeatherForecast MagicMirror Module",
+          Accept: `application/geo+json;v=${Date.now()}`
+        }
       });
 
       if (!response.ok) {
@@ -384,7 +396,10 @@ module.exports = NodeHelper.create({
     try {
       const response = await this.fetchWithRetry(url, {
         cache: "no-store",
-        headers: {"User-Agent": "MMM-OpenWeatherForecast MagicMirror Module"}
+        headers: {
+          "User-Agent": "MMM-OpenWeatherForecast MagicMirror Module",
+          Accept: `application/geo+json;v=${Date.now()}`
+        }
       });
 
       if (!response.ok) {
