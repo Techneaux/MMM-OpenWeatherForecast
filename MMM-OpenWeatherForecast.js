@@ -134,8 +134,10 @@ Module.register("MMM-OpenWeatherForecast", {
   validUnits: ["standard", "metric", "imperial"],
   validLayouts: ["tiled", "table"],
 
-  // Staleness threshold constant
-  STALE_THRESHOLD_MS: 30 * 60 * 1000, // 30 minutes
+  // Staleness threshold: 30 minutes = 3x the default 10-minute poll interval.
+  // Data is considered stale only after 3 consecutive failed polls, avoiding
+  // false alarms from transient API errors while still alerting users to issues.
+  STALE_THRESHOLD_MS: 30 * 60 * 1000,
 
   getScripts () {
     return ["moment.js", this.file("skycons.js")];
