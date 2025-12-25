@@ -615,8 +615,8 @@ Module.register("MMM-OpenWeatherForecast", {
   /**
    * Check if wind gust should be displayed based on NWS standards.
    * Gusts shown when: gust >= 18 mph AND (gust - speed) >= 10 mph
-   * @param {number} speed - Wind speed in API units (m/s for metric, mph for imperial)
-   * @param {number} gust - Wind gust in API units
+   * @param {number} speed - Wind speed in API units (m/s for standard/metric, mph for imperial)
+   * @param {number} gust - Wind gust in API units (m/s for standard/metric, mph for imperial)
    * @returns {boolean} - Whether to display the gust
    */
   shouldShowGust (speed, gust) {
