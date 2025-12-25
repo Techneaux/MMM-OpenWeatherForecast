@@ -529,7 +529,7 @@ Module.register("MMM-OpenWeatherForecast", {
     const gust = daily.wind_gust || 0;
     return {
       windSpeed: `${Math.round(speed * factor)}`,
-      windGust: gust > 0
+      windGust: this.shouldShowGust(speed, gust)
         ? `${Math.round(gust * factor)}`
         : null,
       windUnit: this.getUnit("windSpeed")
@@ -596,9 +596,9 @@ Module.register("MMM-OpenWeatherForecast", {
       conversionFactor = 3.6;
     }
 
-    // wind gust
+    // wind gust - only show when significant per NWS standards
     let windGust = null;
-    if (!this.config.concise && gust) {
+    if (!this.config.concise && this.shouldShowGust(speed, gust)) {
       windGust = `(G${Math.round(gust * conversionFactor)})`;
     }
 
@@ -610,6 +610,28 @@ Module.register("MMM-OpenWeatherForecast", {
         ? null
         : this.getOrdinal(bearing)
     };
+  },
+
+  /**
+   * Check if wind gust should be displayed based on NWS standards.
+   * Gusts shown when: gust >= 18 mph AND (gust - speed) >= 10 mph
+   * @param {number} speed - Wind speed in API units (m/s for standard/metric, mph for imperial)
+   * @param {number} gust - Wind gust in API units (m/s for standard/metric, mph for imperial)
+   * @returns {boolean} - Whether to display the gust
+   */
+  shouldShowGust (speed, gust) {
+    if (!gust || gust <= 0) return false;
+
+    // Convert to mph for threshold comparison if not already in mph
+    const MS_TO_MPH = 2.237;
+    const toMph = this.config.units === "imperial" ? 1 : MS_TO_MPH;
+    const gustMph = gust * toMph;
+    const speedMph = speed * toMph;
+
+    const MIN_GUST_MPH = 18; // Gust must be at least this fast
+    const MIN_DIFFERENCE_MPH = 10; // Gust must exceed wind by this much
+
+    return gustMph >= MIN_GUST_MPH && (gustMph - speedMph) >= MIN_DIFFERENCE_MPH;
   },
 
   /*
