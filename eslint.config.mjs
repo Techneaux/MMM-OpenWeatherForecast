@@ -6,7 +6,16 @@ import markdown from "@eslint/markdown";
 import stylistic from "@stylistic/eslint-plugin";
 
 export default defineConfig([
-  {files: ["**/*.css"], plugins: {css}, language: "css/css", extends: ["css/recommended"]},
+  {
+    files: ["**/*.css"],
+    plugins: {css},
+    language: "css/css",
+    extends: ["css/recommended"],
+    rules: {
+      // Allow non-baseline CSS properties that gracefully degrade (e.g., Firefox scrollbar styling)
+      "css/use-baseline": "off"
+    }
+  },
   {
     files: ["**/*.js", "**/*.mjs"],
     languageOptions: {
@@ -38,7 +47,9 @@ export default defineConfig([
       "@stylistic/space-before-function-paren": ["error", "always"],
       // Code quality
       "consistent-this": ["error", "self"],
-      "one-var": ["error", "never"]
+      "one-var": ["error", "never"],
+      // Allow underscore-prefixed unused parameters (common convention for intentionally unused args)
+      "no-unused-vars": ["error", {argsIgnorePattern: "^_"}]
     }
   },
   {files: ["**/*.md"], plugins: {markdown}, language: "markdown/gfm", extends: ["markdown/recommended"]}

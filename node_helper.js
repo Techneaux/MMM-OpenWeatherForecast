@@ -509,6 +509,9 @@ module.exports = NodeHelper.create({
     // Build alerts
     const alerts = this.buildAlerts(alertsData);
 
+    // Build detailed forecast periods for modal display
+    const forecastPeriods = this.buildDetailedForecastPeriods(forecastData);
+
     return {
       lat: latitude,
       lon: longitude,
@@ -517,7 +520,8 @@ module.exports = NodeHelper.create({
       current,
       daily,
       hourly,
-      alerts
+      alerts,
+      forecastPeriods
     };
   },
 
@@ -1160,5 +1164,26 @@ module.exports = NodeHelper.create({
         tags: [props.severity, props.urgency, props.certainty].filter(Boolean)
       };
     });
+  },
+
+  /**
+   * Build detailed forecast periods for modal display.
+   * Returns all forecast periods from the /forecast API for modal display.
+   * @param {Object} forecastData - Raw forecast data from weather.gov /forecast endpoint
+   * @returns {Array} Array of forecast period objects with name and detailedForecast
+   */
+  buildDetailedForecastPeriods (forecastData) {
+    if (!forecastData?.properties?.periods) {
+      return [];
+    }
+
+    // Return all periods (14 periods = 7 days × day/night)
+    return forecastData.properties.periods.map((period) => ({
+      name: period.name,
+      detailedForecast: period.detailedForecast,
+      temperature: period.temperature,
+      temperatureUnit: period.temperatureUnit,
+      isDaytime: period.isDaytime
+    }));
   }
 });
