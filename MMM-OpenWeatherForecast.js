@@ -206,6 +206,11 @@ Module.register("MMM-OpenWeatherForecast", {
     // Staleness tracking
     this.lastSuccessTime = null;
 
+    // Modal state
+    this.isModalOpen = false;
+    this.modalElement = null;
+    this._escKeyHandler = null;
+
     /*
      * Optionally, Dark Sky's Skycons animated icon
      * set can be used.  If so, it is drawn to the DOM
@@ -309,6 +314,12 @@ Module.register("MMM-OpenWeatherForecast", {
     });
   },
 
+  notificationReceived (notification, _payload, _sender) {
+    if (notification === "DOM_OBJECTS_CREATED") {
+      this._attachClickHandler();
+    }
+  },
+
   socketNotificationReceived (notification, payload) {
     if (notification === "OPENWEATHER_FORECAST_DATA" && payload.instanceId === this.identifier) {
       if (payload.error) {
@@ -333,6 +344,11 @@ Module.register("MMM-OpenWeatherForecast", {
         this.formattedWeatherData = this.processWeatherData();
 
         this.updateDom(this.config.updateFadeSpeed);
+
+        // Refresh modal content if open
+        if (this.isModalOpen) {
+          this._refreshModalContent();
+        }
 
         // broadcast weather update (original format)
         this.sendNotification("OPENWEATHER_FORECAST_WEATHER_UPDATE", payload);
@@ -1017,5 +1033,294 @@ Module.register("MMM-OpenWeatherForecast", {
         self.config[key] = parseInt(self.config[key], 10);
       }
     });
+  },
+
+  /*
+   * Modal Methods
+   * These methods handle the detailed forecast/alerts modal popup.
+   * Only available when using the "free" weather provider.
+   */
+
+  /**
+   * Attach click handler to the module to open the modal.
+   * Only attaches if using the free provider.
+   */
+  _attachClickHandler () {
+    if (this.config.weatherProvider !== "free") {
+      return; // Modal only available for free provider
+    }
+
+    const moduleEl = document.getElementById(this.identifier);
+    if (!moduleEl) {
+      return;
+    }
+
+    const contentEl = moduleEl.querySelector(".module-content");
+    if (contentEl) {
+      contentEl.style.cursor = "pointer";
+      contentEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._openModal();
+      });
+    }
+  },
+
+  /**
+   * Open the modal popup.
+   */
+  _openModal () {
+    if (this.isModalOpen) {
+      return;
+    }
+    if (!this.weatherData) {
+      return;
+    }
+
+    this.isModalOpen = true;
+
+    // Create and append modal to document.body (for z-index control)
+    this.modalElement = this._createModalDom();
+    document.body.appendChild(this.modalElement);
+
+    // Add ESC key handler
+    this._escKeyHandler = (e) => {
+      if (e.key === "Escape") {
+        this._closeModal();
+      }
+    };
+    document.addEventListener("keydown", this._escKeyHandler);
+  },
+
+  /**
+   * Refresh the modal content with latest weather data.
+   * Called when new data arrives while modal is open.
+   */
+  _refreshModalContent () {
+    if (!this.modalElement) {
+      return;
+    }
+
+    const content = this.modalElement.querySelector(".weather-modal-content");
+    if (!content) {
+      return;
+    }
+
+    // Clear existing content
+    content.innerHTML = "";
+
+    // Rebuild alerts section first (only if there are alerts)
+    const alertsSection = this._createAlertsSection();
+    if (alertsSection) {
+      content.appendChild(alertsSection);
+    }
+
+    // Rebuild forecast section
+    const forecastSection = this._createForecastSection();
+    content.appendChild(forecastSection);
+  },
+
+  /**
+   * Close the modal popup and cleanup.
+   */
+  _closeModal () {
+    if (!this.isModalOpen) {
+      return;
+    }
+
+    this.isModalOpen = false;
+
+    // Remove ESC key handler
+    if (this._escKeyHandler) {
+      document.removeEventListener("keydown", this._escKeyHandler);
+      this._escKeyHandler = null;
+    }
+
+    // Remove modal from DOM
+    if (this.modalElement) {
+      document.body.removeChild(this.modalElement);
+      this.modalElement = null;
+    }
+  },
+
+  /**
+   * Create the modal DOM structure.
+   * Uses document.createElement to avoid XSS vulnerabilities.
+   * @returns {HTMLElement} The modal overlay element
+   */
+  _createModalDom () {
+    const self = this;
+
+    // Overlay
+    const overlay = document.createElement("div");
+    overlay.className = "weather-modal-overlay";
+    overlay.id = `weather-forecast-modal-${this.identifier}`;
+
+    // Click outside to close
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        self._closeModal();
+      }
+    });
+
+    // Modal container
+    const modal = document.createElement("div");
+    modal.className = "weather-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", `weather-modal-title-${this.identifier}`);
+
+    // Prevent clicks inside modal from closing it
+    modal.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+
+    // Header
+    const header = document.createElement("div");
+    header.className = "weather-modal-header";
+
+    const title = document.createElement("h3");
+    title.id = `weather-modal-title-${this.identifier}`;
+    title.textContent = "Weather Details";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "weather-modal-close";
+    closeBtn.innerHTML = "&times;";
+    closeBtn.setAttribute("aria-label", "Close modal");
+    closeBtn.addEventListener("click", () => self._closeModal());
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    // Scrollable content container
+    const content = document.createElement("div");
+    content.className = "weather-modal-content";
+
+    // Alerts Section first (only if there are alerts)
+    const alertsSection = this._createAlertsSection();
+    if (alertsSection) {
+      content.appendChild(alertsSection);
+    }
+
+    // Detailed Forecast Section
+    const forecastSection = this._createForecastSection();
+    content.appendChild(forecastSection);
+
+    modal.appendChild(header);
+    modal.appendChild(content);
+    overlay.appendChild(modal);
+
+    return overlay;
+  },
+
+  /**
+   * Create the forecast section of the modal.
+   * @returns {HTMLElement} The forecast section element
+   */
+  _createForecastSection () {
+    const section = document.createElement("div");
+    section.className = "weather-modal-section forecast-section";
+
+    const sectionTitle = document.createElement("h4");
+    sectionTitle.textContent = "Detailed Forecast";
+    section.appendChild(sectionTitle);
+
+    const periods = this.weatherData.forecastPeriods || [];
+
+    if (periods.length === 0) {
+      const noData = document.createElement("p");
+      noData.className = "no-data";
+      noData.textContent = "Detailed forecast not available.";
+      section.appendChild(noData);
+      return section;
+    }
+
+    periods.forEach((period) => {
+      const periodDiv = document.createElement("div");
+      periodDiv.className = "forecast-period";
+
+      const periodName = document.createElement("div");
+      periodName.className = "period-name";
+      periodName.textContent = period.name;
+
+      const periodDetail = document.createElement("div");
+      periodDetail.className = "period-detail";
+      periodDetail.textContent = period.detailedForecast;
+
+      periodDiv.appendChild(periodName);
+      periodDiv.appendChild(periodDetail);
+      section.appendChild(periodDiv);
+    });
+
+    return section;
+  },
+
+  /**
+   * Create the alerts section of the modal.
+   * Returns null if there are no alerts (section is omitted entirely).
+   * @returns {HTMLElement|null} The alerts section element, or null
+   */
+  _createAlertsSection () {
+    const alerts = this.weatherData.alerts || [];
+
+    if (alerts.length === 0) {
+      return null; // No alerts section if no alerts
+    }
+
+    const section = document.createElement("div");
+    section.className = "weather-modal-section alerts-section";
+
+    // Header container with title and jump button
+    const self = this;
+    const headerContainer = document.createElement("div");
+    headerContainer.className = "alerts-header";
+
+    const sectionTitle = document.createElement("h4");
+    sectionTitle.textContent = `Weather Alerts (${alerts.length})`;
+    headerContainer.appendChild(sectionTitle);
+
+    // Inline jump button (right-aligned)
+    const jumpBtn = document.createElement("button");
+    jumpBtn.className = "weather-modal-jump-btn";
+    jumpBtn.textContent = "↓ Forecast";
+    jumpBtn.addEventListener("click", () => {
+      const forecastSection = self.modalElement.querySelector(".forecast-section");
+      if (forecastSection) {
+        forecastSection.scrollIntoView({behavior: "smooth"});
+      }
+    });
+    headerContainer.appendChild(jumpBtn);
+
+    section.appendChild(headerContainer);
+
+    alerts.forEach((alert, index) => {
+      const alertDiv = document.createElement("div");
+      alertDiv.className = "alert-item";
+
+      const alertTitle = document.createElement("div");
+      alertTitle.className = "alert-title";
+      alertTitle.textContent = alert.event;
+
+      const alertMeta = document.createElement("div");
+      alertMeta.className = "alert-meta";
+      alertMeta.textContent = `From: ${alert.sender_name}`;
+
+      const alertDesc = document.createElement("div");
+      alertDesc.className = "alert-description";
+      alertDesc.textContent = alert.description;
+
+      alertDiv.appendChild(alertTitle);
+      alertDiv.appendChild(alertMeta);
+      alertDiv.appendChild(alertDesc);
+      section.appendChild(alertDiv);
+
+      // Add separator between alerts (except last)
+      if (index < alerts.length - 1) {
+        const separator = document.createElement("hr");
+        separator.className = "alert-separator";
+        section.appendChild(separator);
+      }
+    });
+
+    return section;
   }
 });
