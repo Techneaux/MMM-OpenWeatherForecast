@@ -1168,7 +1168,7 @@ module.exports = NodeHelper.create({
 
   /**
    * Build detailed forecast periods for modal display.
-   * Extracts the first 2 periods (current + next) from the /forecast API.
+   * Returns all forecast periods from the /forecast API for modal display.
    * @param {Object} forecastData - Raw forecast data from weather.gov /forecast endpoint
    * @returns {Array} Array of forecast period objects with name and detailedForecast
    */

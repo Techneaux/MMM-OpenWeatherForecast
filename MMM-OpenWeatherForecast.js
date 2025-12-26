@@ -210,6 +210,7 @@ Module.register("MMM-OpenWeatherForecast", {
     this.isModalOpen = false;
     this.modalElement = null;
     this._escKeyHandler = null;
+    this._contentClickHandler = null;
 
     /*
      * Optionally, Dark Sky's Skycons animated icon
@@ -1058,10 +1059,18 @@ Module.register("MMM-OpenWeatherForecast", {
     const contentEl = moduleEl.querySelector(".module-content");
     if (contentEl) {
       contentEl.style.cursor = "pointer";
-      contentEl.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this._openModal();
-      });
+
+      // Create stable handler if it doesn't exist
+      if (!this._contentClickHandler) {
+        this._contentClickHandler = (e) => {
+          e.stopPropagation();
+          this._openModal();
+        };
+      }
+
+      // Remove existing before adding (prevents duplicates)
+      contentEl.removeEventListener("click", this._contentClickHandler);
+      contentEl.addEventListener("click", this._contentClickHandler);
     }
   },
 
@@ -1105,8 +1114,10 @@ Module.register("MMM-OpenWeatherForecast", {
       return;
     }
 
-    // Clear existing content
-    content.innerHTML = "";
+    // Clear existing content by removing child nodes for proper cleanup
+    while (content.firstChild) {
+      content.removeChild(content.firstChild);
+    }
 
     // Rebuild alerts section first (only if there are alerts)
     const alertsSection = this._createAlertsSection();
@@ -1137,7 +1148,9 @@ Module.register("MMM-OpenWeatherForecast", {
 
     // Remove modal from DOM
     if (this.modalElement) {
-      document.body.removeChild(this.modalElement);
+      if (this.modalElement.parentNode === document.body) {
+        document.body.removeChild(this.modalElement);
+      }
       this.modalElement = null;
     }
   },
@@ -1184,7 +1197,7 @@ Module.register("MMM-OpenWeatherForecast", {
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "weather-modal-close";
-    closeBtn.innerHTML = "&times;";
+    closeBtn.textContent = "×";
     closeBtn.setAttribute("aria-label", "Close modal");
     closeBtn.addEventListener("click", () => self._closeModal());
 
