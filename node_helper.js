@@ -1170,7 +1170,8 @@ module.exports = NodeHelper.create({
    * Build detailed forecast periods for modal display.
    * Returns all forecast periods from the /forecast API for modal display.
    * @param {Object} forecastData - Raw forecast data from weather.gov /forecast endpoint
-   * @returns {Array} Array of forecast period objects with name and detailedForecast
+   * @returns {Array} Array of forecast period objects with name, detailedForecast, shortForecast,
+   *                  temperature, temperatureUnit, isDaytime, icon, and probabilityOfPrecipitation
    */
   buildDetailedForecastPeriods (forecastData) {
     if (!forecastData?.properties?.periods) {
@@ -1181,9 +1182,12 @@ module.exports = NodeHelper.create({
     return forecastData.properties.periods.map((period) => ({
       name: period.name,
       detailedForecast: period.detailedForecast,
+      shortForecast: period.shortForecast,
       temperature: period.temperature,
       temperatureUnit: period.temperatureUnit,
-      isDaytime: period.isDaytime
+      isDaytime: period.isDaytime,
+      icon: period.icon,
+      probabilityOfPrecipitation: period.probabilityOfPrecipitation?.value ?? null
     }));
   }
 });

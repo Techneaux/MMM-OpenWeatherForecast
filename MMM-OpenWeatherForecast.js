@@ -1251,6 +1251,40 @@ Module.register("MMM-OpenWeatherForecast", {
       const periodDiv = document.createElement("div");
       periodDiv.className = "forecast-period";
 
+      // Left column: quick info (icon, temp, precip)
+      const leftCol = document.createElement("div");
+      leftCol.className = "period-quick-info";
+
+      // Icon (use medium size, CSS scales to 56x56)
+      if (period.icon) {
+        const iconImg = document.createElement("img");
+        iconImg.className = "period-icon";
+        iconImg.src = period.icon;
+        iconImg.alt = period.shortForecast || "";
+        iconImg.onerror = () => { iconImg.style.display = "none"; };
+        leftCol.appendChild(iconImg);
+      }
+
+      // Temperature with High/Low label and color
+      const tempDiv = document.createElement("div");
+      const label = period.isDaytime ? "High" : "Low";
+      const tempClass = period.isDaytime ? "period-temp-high" : "period-temp-low";
+      tempDiv.className = `period-temp ${tempClass}`;
+      tempDiv.textContent = `${label}: ${period.temperature ?? "—"}°${period.temperatureUnit || ""}`;
+      leftCol.appendChild(tempDiv);
+
+      // Precipitation (only if >= 20%)
+      if (period.probabilityOfPrecipitation && period.probabilityOfPrecipitation >= 20) {
+        const precipDiv = document.createElement("div");
+        precipDiv.className = "period-precip";
+        precipDiv.textContent = `${period.probabilityOfPrecipitation}% precip`;
+        leftCol.appendChild(precipDiv);
+      }
+
+      // Right column: period name + detailed forecast
+      const rightCol = document.createElement("div");
+      rightCol.className = "period-detail-col";
+
       const periodName = document.createElement("div");
       periodName.className = "period-name";
       periodName.textContent = period.name;
@@ -1259,8 +1293,11 @@ Module.register("MMM-OpenWeatherForecast", {
       periodDetail.className = "period-detail";
       periodDetail.textContent = period.detailedForecast;
 
-      periodDiv.appendChild(periodName);
-      periodDiv.appendChild(periodDetail);
+      rightCol.appendChild(periodName);
+      rightCol.appendChild(periodDetail);
+
+      periodDiv.appendChild(leftCol);
+      periodDiv.appendChild(rightCol);
       section.appendChild(periodDiv);
     });
 
