@@ -1267,8 +1267,15 @@ Module.register("MMM-OpenWeatherForecast", {
 
       // Temperature with High/Low label and color
       const tempDiv = document.createElement("div");
-      const label = period.isDaytime ? "High" : "Low";
-      const tempClass = period.isDaytime ? "period-temp-high" : "period-temp-low";
+      let label = "Temp";
+      let tempClass = "period-temp-unknown";
+      if (period.isDaytime === true) {
+        label = "High";
+        tempClass = "period-temp-high";
+      } else if (period.isDaytime === false) {
+        label = "Low";
+        tempClass = "period-temp-low";
+      }
       tempDiv.className = `period-temp ${tempClass}`;
       tempDiv.textContent = `${label}: ${period.temperature ?? "—"}°${period.temperatureUnit || ""}`;
       leftCol.appendChild(tempDiv);
@@ -1287,11 +1294,11 @@ Module.register("MMM-OpenWeatherForecast", {
 
       const periodName = document.createElement("div");
       periodName.className = "period-name";
-      periodName.textContent = period.name;
+      periodName.textContent = period.name || "Unknown Period";
 
       const periodDetail = document.createElement("div");
       periodDetail.className = "period-detail";
-      periodDetail.textContent = period.detailedForecast;
+      periodDetail.textContent = period.detailedForecast || "No detailed forecast available.";
 
       rightCol.appendChild(periodName);
       rightCol.appendChild(periodDetail);

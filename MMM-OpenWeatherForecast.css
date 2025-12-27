@@ -550,6 +550,10 @@
   color: #64b5f6;
 }
 
+.period-temp-unknown {
+  color: #ccc;
+}
+
 .period-precip {
   color: #ccc;
   font-size: 14px;
