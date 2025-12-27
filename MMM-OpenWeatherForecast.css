@@ -505,8 +505,12 @@
   padding-bottom: 8px;
 }
 
-/* Forecast Period Styling */
+/* Forecast Period Styling - Two Column Layout */
 .forecast-period {
+  display: flex;
+  flex-direction: row;
+  gap: 15px;
+  align-items: flex-start;
   margin-bottom: 15px;
   padding-bottom: 15px;
   border-bottom: 1px solid #2a2a2a;
@@ -516,6 +520,50 @@
   margin-bottom: 0;
   padding-bottom: 0;
   border-bottom: none;
+}
+
+/* Left column: quick info */
+.period-quick-info {
+  flex: 0 0 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 5px;
+}
+
+.period-icon {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+}
+
+.period-temp {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.period-temp-high {
+  color: #ff6b6b;
+}
+
+.period-temp-low {
+  color: #64b5f6;
+}
+
+.period-temp-unknown {
+  color: #ccc;
+}
+
+.period-precip {
+  color: #ccc;
+  font-size: 14px;
+}
+
+/* Right column: name + detailed forecast */
+.period-detail-col {
+  flex: 1;
+  min-width: 0;
 }
 
 .period-name {
