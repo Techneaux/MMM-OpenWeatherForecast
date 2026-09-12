@@ -744,7 +744,8 @@
       snow: opts.colors.snow || "#C2EEFF",
       leaf: opts.colors.leaf || "#2C5228",
       rain: opts.colors.rain || "#7FDBFF",
-      sun: opts.colors.sun || "#FFDC00"
+      sun: opts.colors.sun || "#FFDC00",
+      lightning: opts.colors.lightning || opts.colors.sun || "#FFDC00"
     };
     if (this.monochrome) {
       this.color = opts.color || this.colors.main;
