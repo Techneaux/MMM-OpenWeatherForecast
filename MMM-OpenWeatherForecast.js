@@ -241,6 +241,9 @@ Module.register("MMM-OpenWeatherForecast", {
             : "#FFFFFF",
           sun: this.config.colored
             ? "#FFD550"
+            : "#FFFFFF",
+          lightning: this.config.colored
+            ? "#FFD550"
             : "#FFFFFF"
         }
       });
@@ -989,6 +992,16 @@ Module.register("MMM-OpenWeatherForecast", {
   addIcon (icon, isMainIcon) {
     Log.debug(`Adding icon: ${icon}, ${isMainIcon}`);
 
+    /*
+     * Skycons silently draws nothing for an icon it has no drawing
+     * function for, which leaves an empty canvas. Return null so the
+     * template falls back to the flat icon from the configured iconset.
+     */
+    if (!this.canAnimateIcon(icon)) {
+      Log.warn(`${this.name}: no animated drawing for icon '${icon}', using flat icon`);
+      return null;
+    }
+
     // id to use for the canvas element
     let iconId = "skycon_main";
     if (!isMainIcon) {
@@ -1002,6 +1015,17 @@ Module.register("MMM-OpenWeatherForecast", {
     });
 
     return iconId;
+  },
+
+  /*
+   *Returns true if the Skycons library can draw the given
+   *Dark Sky icon name (e.g. "thunderstorm" -> Skycons.THUNDERSTORM).
+   */
+  canAnimateIcon (icon) {
+    if (typeof icon !== "string" || typeof Skycons === "undefined") {
+      return false;
+    }
+    return typeof Skycons[icon.toUpperCase().replace(/-/gu, "_")] === "function";
   },
 
   /*

@@ -329,6 +329,37 @@
     }
   }
 
+  function lightning (ctx, t, cx, cy, cw, s, color) {
+    // (cx, cy) is the top of the bolt. Flicker: two quick flashes per cycle.
+    const p = t / 2400 % 1;
+    const flash = p < 0.08 || p > 0.16 && p < 0.22;
+
+    const x0 = cx + cw * 0.08;
+    const y0 = cy;
+    const x1 = cx - cw * 0.05;
+    const y1 = cy + cw * 0.17;
+    const x2 = cx + cw * 0.05;
+    const y2 = y1;
+    const x3 = cx - cw * 0.08;
+    const y3 = cy + cw * 0.36;
+
+    ctx.save();
+    ctx.globalAlpha = flash
+      ? 1
+      : 0.8;
+    ctx.strokeStyle = color.lightning || color.sun || color;
+    ctx.lineWidth = s * 1.1;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x3, y3);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function fogbank (ctx, t, cx, cy, cw, s, color) {
     t /= 30000;
 
@@ -713,7 +744,8 @@
       snow: opts.colors.snow || "#C2EEFF",
       leaf: opts.colors.leaf || "#2C5228",
       rain: opts.colors.rain || "#7FDBFF",
-      sun: opts.colors.sun || "#FFDC00"
+      sun: opts.colors.sun || "#FFDC00",
+      lightning: opts.colors.lightning || opts.colors.sun || "#FFDC00"
     };
     if (this.monochrome) {
       this.color = opts.color || this.colors.main;
@@ -799,6 +831,15 @@
 
     swoosh(ctx, t, w * 0.5, h * 0.5, s, s * STROKE, 0, 2, color);
     swoosh(ctx, t, w * 0.5, h * 0.5, s, s * STROKE, 1, 2, color);
+  };
+
+  Skycons.THUNDERSTORM = function (ctx, t, color) {
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    const s = Math.min(w, h);
+
+    cloud(ctx, t, w * 0.5, h * 0.37, s * 0.9, s * STROKE, color);
+    lightning(ctx, t, w * 0.5, h * 0.58, s * 0.9, s * STROKE, color);
   };
 
   Skycons.FOG = function (ctx, t, color) {

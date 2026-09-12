@@ -1,6 +1,6 @@
 {
   "name": "mmm-openweatherforecast",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "MagicMirror² module that gets weather forecast data from OpenWeatherMap.",
   "repository": {
     "type": "git",
